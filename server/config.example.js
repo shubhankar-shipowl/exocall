@@ -10,6 +10,12 @@ DB_PORT = 3306;
 PORT = 8006;
 NODE_ENV = development;
 
+// Server URL for webhooks (set to your VPS domain or ngrok URL)
+// For localhost: SERVER_URL=http://localhost:8006
+// For VPS: SERVER_URL=http://srv512766.hstgr.cloud:8090
+// For ngrok: SERVER_URL=https://your-ngrok-url.ngrok-free.app
+SERVER_URL = http://localhost:8006;
+
 // Exotel API Configuration
 EXOTEL_SID = your_exotel_sid;
 EXOTEL_API_KEY = your_exotel_api_key;

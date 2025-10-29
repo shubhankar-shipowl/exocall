@@ -5,6 +5,12 @@ export default defineConfig({
   plugins: [react()],
   server: {
     port: 3000,
+    host: '0.0.0.0', // Allow external connections
+    allowedHosts: [
+      'localhost',
+      'srv512766.hstgr.cloud',
+      '.hstgr.cloud', // Allow all subdomains of hstgr.cloud
+    ],
     proxy: {
       '/api': {
         target: 'http://localhost:8006',

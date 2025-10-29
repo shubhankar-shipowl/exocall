@@ -32,15 +32,54 @@ elif [ -f "/opt/homebrew/etc/nginx/servers/exocall.conf" ]; then
     NGINX_CONFIG="/opt/homebrew/etc/nginx/servers/exocall.conf"
     NGINX_DIR="/opt/homebrew/etc/nginx/servers"
 else
-    echo -e "${RED}❌ Could not find nginx config file${NC}"
+    echo -e "${YELLOW}⚠️  Nginx config file not found. Will create it.${NC}"
     echo ""
-    echo "Searching for nginx config files..."
-    sudo find /etc /opt /usr -name "*.conf" 2>/dev/null | grep -E "(nginx|exocall)" | head -5
-    echo ""
-    echo "Please specify the nginx config file path:"
-    read -p "Config file path: " NGINX_CONFIG
-    if [ ! -f "$NGINX_CONFIG" ]; then
-        echo -e "${RED}File not found: $NGINX_CONFIG${NC}"
+    echo "Searching for nginx config directory..."
+    
+    # Try to find nginx config directory
+    NGINX_DIR=""
+    if [ -d "/etc/nginx/sites-available" ]; then
+        NGINX_DIR="/etc/nginx/sites-available"
+    elif [ -d "/etc/nginx/conf.d" ]; then
+        NGINX_DIR="/etc/nginx/conf.d"
+    elif [ -d "/usr/local/etc/nginx/servers" ]; then
+        NGINX_DIR="/usr/local/etc/nginx/servers"
+    elif [ -d "/opt/homebrew/etc/nginx/servers" ]; then
+        NGINX_DIR="/opt/homebrew/etc/nginx/servers"
+    else
+        echo "Could not find nginx config directory. Please specify:"
+        read -p "Nginx config directory: " NGINX_DIR
+    fi
+    
+    if [ -n "$NGINX_DIR" ] && [ -d "$NGINX_DIR" ]; then
+        NGINX_CONFIG="$NGINX_DIR/exocall.conf"
+        echo -e "${BLUE}Will create config at: $NGINX_CONFIG${NC}"
+        
+        # Check if we have the source config file
+        SOURCE_CONFIG=""
+        if [ -f "nginx.exocall.vps.conf" ]; then
+            SOURCE_CONFIG="nginx.exocall.vps.conf"
+        elif [ -f "nginx.exocall.conf" ]; then
+            SOURCE_CONFIG="nginx.exocall.conf"
+        else
+            echo -e "${RED}❌ Could not find source config file (nginx.exocall.vps.conf or nginx.exocall.conf)${NC}"
+            exit 1
+        fi
+        
+        echo "Copying $SOURCE_CONFIG to $NGINX_CONFIG..."
+        sudo cp "$SOURCE_CONFIG" "$NGINX_CONFIG"
+        
+        # If using sites-available, also enable it
+        if [[ "$NGINX_DIR" == *"sites-available"* ]]; then
+            if [ -d "/etc/nginx/sites-enabled" ]; then
+                echo "Enabling config in sites-enabled..."
+                sudo ln -sf "$NGINX_CONFIG" "/etc/nginx/sites-enabled/exocall.conf"
+            fi
+        fi
+        
+        echo -e "${GREEN}✅ Config file created${NC}"
+    else
+        echo -e "${RED}Invalid directory: $NGINX_DIR${NC}"
         exit 1
     fi
 fi
@@ -163,10 +202,24 @@ fi
 
 echo ""
 echo "=============================="
-echo -e "${GREEN}Setup complete!${NC}"
+echo -e "${GREEN}Nginx setup complete!${NC}"
+echo ""
+echo "⚠️  IMPORTANT: Backend and Frontend services need to be started!"
 echo ""
 echo "Next steps:"
-echo "1. Check firewall: sudo ufw allow 8090/tcp"
-echo "2. Test from external: curl http://YOUR_VPS_IP:8090/health"
-echo "3. Run diagnostic: ./check-vps-access.sh"
+echo "1. Start backend and frontend:"
+echo "   ./start.sh"
+echo "   OR"
+echo "   pm2 start ecosystem.config.js"
+echo ""
+echo "2. Open firewall ports:"
+echo "   sudo ufw allow 8090/tcp"
+echo "   sudo ufw allow 8456/tcp"
+echo "   sudo ufw reload"
+echo ""
+echo "3. Verify everything:"
+echo "   ./check-vps-access.sh"
+echo ""
+echo "4. Test from external:"
+echo "   curl http://$(hostname -I | awk '{print $1}'):8090/health"
 

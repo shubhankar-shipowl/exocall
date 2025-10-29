@@ -56,18 +56,39 @@ echo ""
 
 # Check if nginx listens on external interface
 echo -e "${BLUE}5. Checking if Nginx accepts external connections...${NC}"
-if grep -q "server_name.*_" /opt/homebrew/etc/nginx/servers/exocall.conf 2>/dev/null || \
-   grep -q "server_name.*_" /etc/nginx/sites-available/exocall.conf 2>/dev/null || \
-   grep -q "server_name.*_" /etc/nginx/sites-enabled/exocall.conf 2>/dev/null; then
-    echo -e "   ${GREEN}✅ Nginx configured to accept external connections (server_name includes _)${NC}"
-elif grep -q "server_name localhost" /opt/homebrew/etc/nginx/servers/exocall.conf 2>/dev/null || \
-     grep -q "server_name localhost" /etc/nginx/sites-available/exocall.conf 2>/dev/null; then
-    echo -e "   ${YELLOW}⚠️  Nginx only configured for localhost${NC}"
-    echo -e "   ${YELLOW}   Fix: Add '_' or your domain to server_name in nginx config${NC}"
-    echo -e "   ${YELLOW}   Example: server_name localhost _;${NC}"
+NGINX_CONFIG_FOUND=false
+NGINX_CONFIG_FILE=""
+
+# Try to find nginx config file
+for config_path in \
+    "/opt/homebrew/etc/nginx/servers/exocall.conf" \
+    "/etc/nginx/sites-enabled/exocall.conf" \
+    "/etc/nginx/sites-available/exocall.conf" \
+    "/etc/nginx/conf.d/exocall.conf" \
+    "/usr/local/etc/nginx/servers/exocall.conf"; do
+    if [ -f "$config_path" ]; then
+        NGINX_CONFIG_FILE="$config_path"
+        NGINX_CONFIG_FOUND=true
+        echo -e "   ${BLUE}Found config: $config_path${NC}"
+        break
+    fi
+done
+
+if [ "$NGINX_CONFIG_FOUND" = true ]; then
+    if grep -q "server_name.*_" "$NGINX_CONFIG_FILE" 2>/dev/null; then
+        echo -e "   ${GREEN}✅ Nginx configured to accept external connections (server_name includes _)${NC}"
+    elif grep -q "server_name localhost" "$NGINX_CONFIG_FILE" 2>/dev/null && ! grep -q "server_name.*_" "$NGINX_CONFIG_FILE" 2>/dev/null; then
+        echo -e "   ${YELLOW}⚠️  Nginx only configured for localhost${NC}"
+        echo -e "   ${YELLOW}   Fix: Add '_' or your domain to server_name in nginx config${NC}"
+        echo -e "   ${YELLOW}   Config file: $NGINX_CONFIG_FILE${NC}"
+        echo -e "   ${YELLOW}   Example: server_name localhost _;${NC}"
+    else
+        echo -e "   ${YELLOW}⚠️  Could not verify server_name in config${NC}"
+    fi
 else
-    echo -e "   ${YELLOW}⚠️  Could not check nginx config location${NC}"
-    echo -e "   ${YELLOW}   Manually verify server_name allows external access${NC}"
+    echo -e "   ${YELLOW}⚠️  Could not find nginx config file${NC}"
+    echo -e "   ${YELLOW}   Checked common locations: /etc/nginx/sites-*/ /opt/homebrew/etc/nginx/servers/${NC}"
+    echo -e "   ${YELLOW}   Run: sudo find /etc /opt /usr -name '*exocall*' -o -name '*nginx*' 2>/dev/null | grep -E '\.conf$'${NC}"
 fi
 echo ""
 

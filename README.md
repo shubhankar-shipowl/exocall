@@ -103,7 +103,7 @@ exocall/
    DB_PORT=3306
 
    # Server Configuration
-   PORT=3001
+   PORT=8006
    NODE_ENV=development
 
    # Exotel API Configuration
@@ -215,13 +215,13 @@ npm run reload:pm2
 
 **Development** (`ecosystem.config.js`):
 
-- **exocall-server**: Backend API (port 8000)
+- **exocall-server**: Backend API (port 8006)
 - **exocall-client**: Frontend React app (port 3000)
 - Vite proxy forwards `/api/*` to backend
 
 **Production** (`ecosystem.config.prod.js`):
 
-- **exocall-prod**: Single server serving both frontend and API (port 8000)
+- **exocall-prod**: Single server serving both frontend and API (port 8006)
 - **Cluster Mode**: 2 instances for load balancing
 - Express serves built React app + handles API routes
 
@@ -263,9 +263,9 @@ This will:
 
 ### Reverse Proxy Architecture
 
-- **Development**: Frontend (port 3000) + Backend (port 8000)
+- **Development**: Frontend (port 3000) + Backend (port 8006)
   - Vite proxies `/api/*` to backend automatically
-- **Production**: Single port (8000) serving both frontend and API
+- **Production**: Single port (8006) serving both frontend and API
   - Express serves built React files as static assets
   - API routes handled by Express
   - No CORS issues, simpler deployment

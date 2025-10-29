@@ -1,22 +1,22 @@
-const Contact = require("../models/Contact");
-const CallLog = require("../models/CallLog");
-const Settings = require("../models/Settings");
-const { sequelize, Sequelize } = require("../config/database");
-const axios = require("axios");
-const xml2js = require("xml2js");
+const Contact = require('../models/Contact');
+const CallLog = require('../models/CallLog');
+const Settings = require('../models/Settings');
+const { sequelize, Sequelize } = require('../config/database');
+const axios = require('axios');
+const xml2js = require('xml2js');
 
 // Start outbound calls for contacts with status "Not Called"
 const startCalls = async (req, res) => {
   try {
     // Get Exotel settings
     const settings = await Settings.findOne({
-      order: [["createdAt", "DESC"]],
+      order: [['createdAt', 'DESC']],
     });
 
     if (!settings) {
       return res.status(400).json({
         error:
-          "Exotel settings not configured. Please configure settings first.",
+          'Exotel settings not configured. Please configure settings first.',
       });
     }
 
@@ -29,14 +29,14 @@ const startCalls = async (req, res) => {
     ) {
       return res.status(400).json({
         error:
-          "Incomplete Exotel configuration. Please check SID, API Token, Agent Number, and Caller ID.",
+          'Incomplete Exotel configuration. Please check SID, API Token, Agent Number, and Caller ID.',
       });
     }
 
     // Get contacts with status "Not Called"
     const contacts = await Contact.findAll({
       where: {
-        status: "Not Called",
+        status: 'Not Called',
       },
       limit: 10, // Limit to 10 calls at a time for safety
     });
@@ -65,25 +65,25 @@ const startCalls = async (req, res) => {
           CallerId: settings.caller_id,
           Url: process.env.FLOW_URL,
           StatusCallback: `${
-            process.env.SERVER_URL || "http://localhost:8000"
+            process.env.SERVER_URL || 'http://localhost:8006'
           }/api/webhook/exotel`,
-          StatusCallbackEvents: ["terminal"],
-          StatusCallbackContentType: "application/json",
+          StatusCallbackEvents: ['terminal'],
+          StatusCallbackContentType: 'application/json',
           TimeLimit: 300, // 5 minutes max call duration
           TimeOut: 30, // 30 seconds ring timeout
           Record: true, // Record the call
-          RecordingChannels: "dual", // Separate channels for caller and callee
+          RecordingChannels: 'dual', // Separate channels for caller and callee
           CustomField: `contact_id:${contact.id}`,
         };
 
         console.log(
-          `Starting call for contact: ${contact.name} (${contact.phone})`
+          `Starting call for contact: ${contact.name} (${contact.phone})`,
         );
 
         // Make API call to Exotel
         const response = await axios.post(exotelUrl, callData, {
           headers: {
-            "Content-Type": "application/x-www-form-urlencoded",
+            'Content-Type': 'application/x-www-form-urlencoded',
           },
           timeout: 10000, // 10 second timeout
         });
@@ -98,7 +98,7 @@ const startCalls = async (req, res) => {
         if (callSid) {
           // Update contact status
           await contact.update({
-            status: "In Progress",
+            status: 'In Progress',
             exotel_call_sid: callSid,
             last_attempt: new Date(),
           });
@@ -107,7 +107,7 @@ const startCalls = async (req, res) => {
           await CallLog.create({
             contact_id: contact.id,
             attempt_no: contact.attempts + 1,
-            status: "Initiated",
+            status: 'Initiated',
             exotel_call_sid: callSid,
           });
 
@@ -116,27 +116,27 @@ const startCalls = async (req, res) => {
             contactName: contact.name,
             phone: contact.phone,
             callSid: callSid,
-            status: "success",
+            status: 'success',
           });
 
           successCount++;
           console.log(
-            `✅ Call started successfully for ${contact.name}: ${callSid}`
+            `✅ Call started successfully for ${contact.name}: ${callSid}`,
           );
         } else {
-          throw new Error("Invalid response from Exotel API");
+          throw new Error('Invalid response from Exotel API');
         }
       } catch (error) {
         console.error(
           `❌ Failed to start call for ${contact.name}:`,
-          error.message
+          error.message,
         );
 
         // Update contact with error status
         await contact.update({
-          status: "Failed",
+          status: 'Failed',
           last_attempt: new Date(),
-          agent_notes: `${contact.agent_notes || ""}\nCall initiation failed: ${
+          agent_notes: `${contact.agent_notes || ''}\nCall initiation failed: ${
             error.message
           }`,
         });
@@ -145,14 +145,14 @@ const startCalls = async (req, res) => {
         await CallLog.create({
           contact_id: contact.id,
           attempt_no: contact.attempts + 1,
-          status: "Failed",
+          status: 'Failed',
         });
 
         results.push({
           contactId: contact.id,
           contactName: contact.name,
           phone: contact.phone,
-          status: "error",
+          status: 'error',
           error: error.message,
         });
 
@@ -168,9 +168,9 @@ const startCalls = async (req, res) => {
       results: results,
     });
   } catch (error) {
-    console.error("Error in startCalls:", error);
+    console.error('Error in startCalls:', error);
     res.status(500).json({
-      error: "Failed to start calls",
+      error: 'Failed to start calls',
       details: error.message,
     });
   }
@@ -181,10 +181,10 @@ const getCallStats = async (req, res) => {
   try {
     const stats = await Contact.findAll({
       attributes: [
-        "status",
-        [sequelize.fn("COUNT", sequelize.col("id")), "count"],
+        'status',
+        [sequelize.fn('COUNT', sequelize.col('id')), 'count'],
       ],
-      group: ["status"],
+      group: ['status'],
       raw: true,
     });
 
@@ -203,9 +203,9 @@ const getCallStats = async (req, res) => {
       todayCalls,
     });
   } catch (error) {
-    console.error("Error getting call stats:", error);
+    console.error('Error getting call stats:', error);
     res.status(500).json({
-      error: "Failed to get call statistics",
+      error: 'Failed to get call statistics',
       details: error.message,
     });
   }

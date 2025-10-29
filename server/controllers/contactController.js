@@ -1,19 +1,19 @@
-const Contact = require("../models/Contact");
-const CallLog = require("../models/CallLog");
-const axios = require("axios");
-const xml2js = require("xml2js");
+const Contact = require('../models/Contact');
+const CallLog = require('../models/CallLog');
+const axios = require('axios');
+const xml2js = require('xml2js');
 
 const getContacts = async (req, res) => {
   try {
     const contacts = await Contact.findAll({
-      order: [["createdAt", "DESC"]],
+      order: [['createdAt', 'DESC']],
     });
 
     res.json(contacts);
   } catch (error) {
-    console.error("❌ [API /api/contacts] - Error fetching contacts:", error);
+    console.error('❌ [API /api/contacts] - Error fetching contacts:', error);
     res.status(500).json({
-      error: "Failed to fetch contacts",
+      error: 'Failed to fetch contacts',
       details: error.message,
       stack: error.stack,
     });
@@ -33,7 +33,7 @@ const updateContact = async (req, res) => {
   try {
     const contact = await Contact.findByPk(req.params.id);
     if (!contact) {
-      return res.status(404).json({ error: "Contact not found" });
+      return res.status(404).json({ error: 'Contact not found' });
     }
     await contact.update(req.body);
     res.json(contact);
@@ -46,10 +46,10 @@ const deleteContact = async (req, res) => {
   try {
     const contact = await Contact.findByPk(req.params.id);
     if (!contact) {
-      return res.status(404).json({ error: "Contact not found" });
+      return res.status(404).json({ error: 'Contact not found' });
     }
     await contact.destroy();
-    res.json({ message: "Contact deleted successfully" });
+    res.json({ message: 'Contact deleted successfully' });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -60,38 +60,38 @@ const initiateCall = async (req, res) => {
     // Fetch contact by ID from MySQL
     const contact = await Contact.findByPk(req.params.id);
     if (!contact) {
-      return res.status(404).json({ error: "Contact not found" });
+      return res.status(404).json({ error: 'Contact not found' });
     }
 
     // Check if already "Completed" or "In Progress"
-    if (contact.status === "In Progress") {
+    if (contact.status === 'In Progress') {
       return res.status(400).json({
-        error: "Call already in progress for this contact",
+        error: 'Call already in progress for this contact',
       });
     }
 
-    if (contact.status === "Completed") {
+    if (contact.status === 'Completed') {
       return res.status(400).json({
-        error: "Call already completed for this contact",
+        error: 'Call already completed for this contact',
       });
     }
 
     // Validate required environment variables
     const requiredEnvVars = [
-      "EXOTEL_KEY",
-      "EXOTEL_TOKEN",
-      "EXOTEL_SID",
-      "AGENT_NUMBER",
-      "CALLER_ID",
-      "FLOW_URL",
+      'EXOTEL_KEY',
+      'EXOTEL_TOKEN',
+      'EXOTEL_SID',
+      'AGENT_NUMBER',
+      'CALLER_ID',
+      'FLOW_URL',
     ];
 
     const missingVars = requiredEnvVars.filter(
-      (varName) => !process.env[varName]
+      (varName) => !process.env[varName],
     );
     if (missingVars.length > 0) {
       return res.status(500).json({
-        error: "Missing required environment variables",
+        error: 'Missing required environment variables',
         missing: missingVars,
       });
     }
@@ -105,20 +105,20 @@ const initiateCall = async (req, res) => {
       To: contact.phone, // Customer's number (then call customer)
       CallerId: process.env.CALLER_ID,
       StatusCallback: `${
-        process.env.SERVER_URL || "http://localhost:8000"
+        process.env.SERVER_URL || 'http://localhost:8006'
       }/api/webhook/exotel`,
-      StatusCallbackEvents: ["terminal"],
-      StatusCallbackContentType: "application/json",
+      StatusCallbackEvents: ['terminal'],
+      StatusCallbackContentType: 'application/json',
       TimeLimit: 300, // 5 minutes max call duration
       TimeOut: 30, // 30 seconds ring timeout
       Record: true, // Record the call
-      RecordingChannels: "dual", // Separate channels for caller and callee
+      RecordingChannels: 'dual', // Separate channels for caller and callee
       CustomField: `contact_id:${contact.id}`,
     };
 
     const exotelResponse = await axios.post(exotelUrl, exotelParams, {
       headers: {
-        "Content-Type": "application/x-www-form-urlencoded",
+        'Content-Type': 'application/x-www-form-urlencoded',
       },
       timeout: 30000, // 30 second timeout
     });
@@ -126,8 +126,8 @@ const initiateCall = async (req, res) => {
     // Check if response is successful
     if (exotelResponse.status !== 200) {
       console.error(
-        "Exotel API returned non-200 status:",
-        exotelResponse.status
+        'Exotel API returned non-200 status:',
+        exotelResponse.status,
       );
       throw new Error(`Exotel API error: ${exotelResponse.status}`);
     }
@@ -140,7 +140,7 @@ const initiateCall = async (req, res) => {
     if (parsedResponse?.TwilioResponse?.RestException) {
       const errorMessage =
         parsedResponse.TwilioResponse.RestException[0].Message[0];
-      console.error("Exotel API Error:", errorMessage);
+      console.error('Exotel API Error:', errorMessage);
       throw new Error(`Exotel API error: ${errorMessage}`);
     }
 
@@ -148,15 +148,15 @@ const initiateCall = async (req, res) => {
     const callSid = parsedResponse?.TwilioResponse?.Call?.[0]?.Sid?.[0];
     if (!callSid) {
       console.error(
-        "Parsed response structure:",
-        JSON.stringify(parsedResponse, null, 2)
+        'Parsed response structure:',
+        JSON.stringify(parsedResponse, null, 2),
       );
-      throw new Error("No CallSid received from Exotel API");
+      throw new Error('No CallSid received from Exotel API');
     }
 
     // Update contact with call details
     await contact.update({
-      status: "Initiated", // Set to Initiated when call is first made
+      status: 'Initiated', // Set to Initiated when call is first made
       exotel_call_sid: callSid,
       last_attempt: new Date(),
     });
@@ -165,7 +165,7 @@ const initiateCall = async (req, res) => {
     await CallLog.create({
       contact_id: contact.id,
       exotel_call_sid: callSid,
-      status: "Initiated", // This will be updated by webhook
+      status: 'Initiated', // This will be updated by webhook
       attempt_no: (contact.attempts || 0) + 1,
       duration: 0,
     });
@@ -176,28 +176,28 @@ const initiateCall = async (req, res) => {
         const currentContact = await Contact.findByPk(contact.id);
         if (
           currentContact &&
-          (currentContact.status === "Initiated" ||
-            currentContact.status === "In Progress")
+          (currentContact.status === 'Initiated' ||
+            currentContact.status === 'In Progress')
         ) {
           await currentContact.update({
-            status: "Failed",
+            status: 'Failed',
             last_attempt: new Date(),
             attempts: (currentContact.attempts || 0) + 1,
           });
 
           // Update call log
           await CallLog.update(
-            { status: "Failed", updatedAt: new Date() },
+            { status: 'Failed', updatedAt: new Date() },
             {
               where: {
                 contact_id: contact.id,
                 exotel_call_sid: callSid,
               },
-            }
+            },
           );
         }
       } catch (error) {
-        console.error("Error in timeout handler:", error);
+        console.error('Error in timeout handler:', error);
       }
     }, 120000); // 2 minutes timeout
 
@@ -205,62 +205,62 @@ const initiateCall = async (req, res) => {
     res.status(200).json({
       success: true,
       message:
-        "Call initiated successfully - Agent will be called first, then customer",
+        'Call initiated successfully - Agent will be called first, then customer',
       sid: callSid,
       contact: {
         id: contact.id,
         name: contact.name,
         phone: contact.phone,
-        status: "In Progress",
+        status: 'In Progress',
         attempts: contact.attempts,
         exotel_call_sid: callSid,
       },
     });
   } catch (error) {
-    console.error("Error initiating Exotel call:", error);
+    console.error('Error initiating Exotel call:', error);
 
     // Handle specific Exotel API errors
     if (error.response) {
-      console.error("Exotel API Error:", error.response.data);
+      console.error('Exotel API Error:', error.response.data);
 
       const statusCode = error.response.status;
-      let errorMessage = "Failed to initiate call via Exotel";
-      let userFriendlyMessage = "Unable to make the call at this time.";
+      let errorMessage = 'Failed to initiate call via Exotel';
+      let userFriendlyMessage = 'Unable to make the call at this time.';
 
       // Handle specific error cases
       if (statusCode === 403) {
         // Check for specific error types
         const responseData = error.response.data;
         if (
-          typeof responseData === "string" &&
-          responseData.includes("Insufficient balance")
+          typeof responseData === 'string' &&
+          responseData.includes('Insufficient balance')
         ) {
-          errorMessage = "Insufficient Exotel account balance";
+          errorMessage = 'Insufficient Exotel account balance';
           userFriendlyMessage =
-            "Your Exotel account has insufficient balance to make calls. Please recharge your account to continue.";
+            'Your Exotel account has insufficient balance to make calls. Please recharge your account to continue.';
         } else if (
-          typeof responseData === "string" &&
-          responseData.includes("KYC compliant")
+          typeof responseData === 'string' &&
+          responseData.includes('KYC compliant')
         ) {
-          errorMessage = "Account KYC verification required";
+          errorMessage = 'Account KYC verification required';
           userFriendlyMessage =
-            "Your Exotel account needs KYC verification before making outbound calls. Please contact your administrator.";
+            'Your Exotel account needs KYC verification before making outbound calls. Please contact your administrator.';
         } else {
-          errorMessage = "Access denied by Exotel";
+          errorMessage = 'Access denied by Exotel';
           userFriendlyMessage =
-            "Access denied. Please check your Exotel account permissions.";
+            'Access denied. Please check your Exotel account permissions.';
         }
       } else if (statusCode === 401) {
-        errorMessage = "Exotel authentication failed";
+        errorMessage = 'Exotel authentication failed';
         userFriendlyMessage =
-          "Invalid Exotel credentials. Please contact your administrator.";
+          'Invalid Exotel credentials. Please contact your administrator.';
       } else if (statusCode === 400) {
-        errorMessage = "Invalid request to Exotel";
-        userFriendlyMessage = "Invalid call parameters. Please try again.";
+        errorMessage = 'Invalid request to Exotel';
+        userFriendlyMessage = 'Invalid call parameters. Please try again.';
       } else if (statusCode >= 500) {
-        errorMessage = "Exotel service unavailable";
+        errorMessage = 'Exotel service unavailable';
         userFriendlyMessage =
-          "Exotel service is temporarily unavailable. Please try again later.";
+          'Exotel service is temporarily unavailable. Please try again later.';
       }
 
       // Return 200 with error details instead of 400 to prevent frontend issues
@@ -274,19 +274,19 @@ const initiateCall = async (req, res) => {
     }
 
     // Handle network/timeout errors
-    if (error.code === "ECONNABORTED" || error.code === "ETIMEDOUT") {
+    if (error.code === 'ECONNABORTED' || error.code === 'ETIMEDOUT') {
       return res.status(200).json({
         success: false,
-        error: "Request timeout",
-        message: "Call initiation timed out. Please try again.",
+        error: 'Request timeout',
+        message: 'Call initiation timed out. Please try again.',
       });
     }
 
     // Handle other errors
     res.status(200).json({
       success: false,
-      error: "Failed to initiate call",
-      message: "An unexpected error occurred. Please try again.",
+      error: 'Failed to initiate call',
+      message: 'An unexpected error occurred. Please try again.',
       details: error.message,
     });
   }
@@ -298,15 +298,15 @@ const addNote = async (req, res) => {
     const { id } = req.params;
     const { note } = req.body;
 
-    if (!note || note.trim() === "") {
+    if (!note || note.trim() === '') {
       return res.status(400).json({
-        error: "Note is required and cannot be empty",
+        error: 'Note is required and cannot be empty',
       });
     }
 
     const contact = await Contact.findByPk(id);
     if (!contact) {
-      return res.status(404).json({ error: "Contact not found" });
+      return res.status(404).json({ error: 'Contact not found' });
     }
 
     // Append new note to existing notes with timestamp
@@ -320,18 +320,18 @@ const addNote = async (req, res) => {
     // Persist update explicitly and verify
     await Contact.update({ agent_notes: updatedNotes }, { where: { id } });
     const refreshed = await Contact.findByPk(id, {
-      attributes: ["id", "name", "phone", "agent_notes"],
+      attributes: ['id', 'name', 'phone', 'agent_notes'],
     });
 
     res.json({
       success: true,
-      message: "Note added successfully",
+      message: 'Note added successfully',
       contact: refreshed,
     });
   } catch (error) {
-    console.error("Error adding note:", error);
+    console.error('Error adding note:', error);
     res.status(500).json({
-      error: "Failed to add note",
+      error: 'Failed to add note',
       message: error.message,
     });
   }
@@ -346,15 +346,15 @@ const getContactById = async (req, res) => {
 
     if (!contact) {
       return res.status(404).json({
-        error: "Contact not found",
+        error: 'Contact not found',
       });
     }
 
     res.json(contact);
   } catch (error) {
-    console.error("Error fetching contact:", error);
+    console.error('Error fetching contact:', error);
     res.status(500).json({
-      error: "Failed to fetch contact",
+      error: 'Failed to fetch contact',
       details: error.message,
     });
   }

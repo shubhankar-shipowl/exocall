@@ -165,7 +165,7 @@ print_success "Application started with PM2!"
 print_step "Waiting for services to be ready..."
 
 # Wait for backend
-if wait_for_service "http://localhost:8000/health" "Backend API"; then
+if wait_for_service "http://localhost:8006/health" "Backend API"; then
     print_success "Backend is ready and responding!"
 else
     print_warning "Backend may not be fully ready yet"
@@ -196,16 +196,16 @@ pm2 status
 echo ""
 print_success "🚀 Application URLs:"
 echo -e "  ${GREEN}Frontend:${NC} http://localhost:3000"
-echo -e "  ${GREEN}Backend API:${NC} http://localhost:8000"
-echo -e "  ${GREEN}Health Check:${NC} http://localhost:8000/health"
-echo -e "  ${GREEN}HTTPS (via nginx):${NC} https://localhost:8443"
+echo -e "  ${GREEN}Backend API:${NC} http://localhost:8006"
+echo -e "  ${GREEN}Health Check:${NC} http://localhost:8006/health"
+echo -e "  ${GREEN}HTTPS (via nginx):${NC} https://localhost:8456"
 echo -e "  ${GREEN}HTTP (via nginx):${NC} http://localhost:8090"
 echo -e "  ${GREEN}PM2 Process:${NC} exocall (combined backend + frontend)"
 echo ""
 
 print_status "📊 Quick Health Check:"
 # Test backend API
-if curl -s http://localhost:8000/health >/dev/null 2>&1; then
+if curl -s http://localhost:8006/health >/dev/null 2>&1; then
     echo -e "  ${GREEN}✅ Backend API:${NC} Working"
 else
     echo -e "  ${RED}❌ Backend API:${NC} Not responding"
@@ -219,7 +219,7 @@ else
 fi
 
 # Test HTTPS (nginx)
-if curl -k -s https://localhost:8443 >/dev/null 2>&1; then
+if curl -k -s https://localhost:8456 >/dev/null 2>&1; then
     echo -e "  ${GREEN}✅ HTTPS (nginx):${NC} Working"
 else
     echo -e "  ${YELLOW}⚠️  HTTPS (nginx):${NC} Not responding (nginx may not be running)"
@@ -251,7 +251,7 @@ echo ""
 print_success "🎯 Your ExoCall Dashboard is now running in development mode!"
 print_status "Access the application via:"
 echo -e "  ${BLUE}• Frontend (direct):${NC} http://localhost:3000"
-echo -e "  ${BLUE}• HTTPS (via nginx):${NC} https://localhost:8443"
+echo -e "  ${BLUE}• HTTPS (via nginx):${NC} https://localhost:8456"
 echo -e "  ${BLUE}• HTTP (via nginx):${NC} http://localhost:8090"
 echo ""
 print_warning "Press Ctrl+C to exit (this won't stop PM2 processes)"

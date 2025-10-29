@@ -7,7 +7,7 @@ DB_NAME = exocall;
 DB_PORT = 3306;
 
 // Server Configuration
-PORT = 5000;
+PORT = 8006;
 NODE_ENV = development;
 
 // Exotel API Configuration

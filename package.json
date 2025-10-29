@@ -1,0 +1,39 @@
+{
+  "name": "exocall-dashboard",
+  "version": "1.0.0",
+  "description": "ExoCall Support Dashboard - Full Stack Application",
+  "scripts": {
+    "dev": "concurrently \"npm run server\" \"npm run client\"",
+    "dev:pm2": "pm2 start ecosystem.config.js",
+    "dev:pm2:watch": "pm2 start ecosystem.config.js --watch",
+    "build": "cd client && npm run build",
+    "build:prod": "cd client && NODE_ENV=production npm run build",
+    "start:prod": "NODE_ENV=production pm2 start ecosystem.config.prod.js",
+    "deploy": "npm run build:prod && npm run start:prod",
+    "stop:pm2": "pm2 stop all",
+    "restart:pm2": "pm2 restart all",
+    "delete:pm2": "pm2 delete all",
+    "logs:pm2": "pm2 logs",
+    "monitor:pm2": "pm2 monit",
+    "status:pm2": "pm2 status",
+    "reload:pm2": "pm2 reload ecosystem.config.prod.js",
+    "server": "cd server && npm run dev",
+    "client": "cd client && npm run dev",
+    "install-all": "npm install && cd server && npm install && cd ../client && npm install",
+    "start": "cd server && npm start"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2",
+    "pm2": "^6.0.13"
+  },
+  "keywords": [
+    "exocall",
+    "dashboard",
+    "react",
+    "nodejs",
+    "mysql",
+    "exotel"
+  ],
+  "author": "ExoCall Team",
+  "license": "MIT"
+}

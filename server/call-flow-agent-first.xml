@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+    <!-- First, call the agent -->
+    <Dial callerId="{{CallerId}}" timeout="30">
+        <Number>{{From}}</Number>
+    </Dial>
+    
+    <!-- After agent answers, call the customer -->
+    <Dial callerId="{{CallerId}}" timeout="30">
+        <Number>{{To}}</Number>
+    </Dial>
+    
+    <!-- If no one answers, hangup -->
+    <Hangup/>
+</Response>

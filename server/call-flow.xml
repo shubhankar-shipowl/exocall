@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+    <!-- First, call the agent -->
+    <Dial>
+        <Number>{{AGENT_NUMBER}}</Number>
+    </Dial>
+    
+    <!-- After agent answers, call the customer -->
+    <Dial>
+        <Number>{{CUSTOMER_NUMBER}}</Number>
+    </Dial>
+    
+    <!-- Hang up the call -->
+    <Hangup/>
+</Response>

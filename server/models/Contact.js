@@ -1,8 +1,8 @@
-const { DataTypes } = require("sequelize");
-const { sequelize } = require("../config/database");
+const { DataTypes } = require('sequelize');
+const { sequelize } = require('../config/database');
 
 const Contact = sequelize.define(
-  "Contact",
+  'Contact',
   {
     id: {
       type: DataTypes.INTEGER,
@@ -27,17 +27,17 @@ const Contact = sequelize.define(
     },
     status: {
       type: DataTypes.ENUM(
-        "Not Called",
-        "In Progress",
-        "Completed",
-        "Failed",
-        "Busy",
-        "No Answer",
-        "Switched Off",
-        "Cancelled"
+        'Not Called',
+        'In Progress',
+        'Completed',
+        'Failed',
+        'Busy',
+        'No Answer',
+        'Switched Off',
+        'Cancelled',
       ),
       allowNull: false,
-      defaultValue: "Not Called",
+      defaultValue: 'Not Called',
     },
     attempts: {
       type: DataTypes.INTEGER,
@@ -55,7 +55,7 @@ const Contact = sequelize.define(
     duration: {
       type: DataTypes.INTEGER,
       allowNull: true,
-      comment: "Duration in seconds",
+      comment: 'Duration in seconds',
     },
     agent_notes: {
       type: DataTypes.TEXT,
@@ -68,7 +68,7 @@ const Contact = sequelize.define(
     price: {
       type: DataTypes.STRING(100),
       allowNull: true,
-      comment: "Product price/value",
+      comment: 'Product price/value',
     },
     address: {
       type: DataTypes.TEXT,
@@ -82,15 +82,20 @@ const Contact = sequelize.define(
       type: DataTypes.DATE,
       allowNull: true,
     },
+    remark: {
+      type: DataTypes.STRING(50),
+      allowNull: true,
+      comment: 'Remark: accept or reject',
+    },
   },
   {
-    tableName: "contacts",
+    tableName: 'contacts',
     timestamps: true,
-    createdAt: "createdAt",
-    updatedAt: "updatedAt",
+    createdAt: 'createdAt',
+    updatedAt: 'updatedAt',
     underscored: false,
     freezeTableName: true,
-  }
+  },
 );
 
 module.exports = Contact;

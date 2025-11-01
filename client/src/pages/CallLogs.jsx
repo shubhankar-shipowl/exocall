@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect } from 'react';
 import {
   Phone,
   Clock,
@@ -13,7 +13,7 @@ import {
   Trash2,
   RotateCcw,
   X,
-} from "lucide-react";
+} from 'lucide-react';
 import {
   getIndianDate,
   toIndianDate,
@@ -23,18 +23,18 @@ import {
   getYesterdayInIndia,
   getTomorrowInIndia,
   getCurrentIndianDate,
-} from "../utils/timezone";
-import { toast } from "react-toastify";
-import ConfirmationModal from "../components/ConfirmationModal";
-import { EmptyStates } from "../components/EmptyState";
-import { TableSkeleton } from "../components/LoadingSkeleton";
-import { useAuth } from "../contexts/AuthContext";
+} from '../utils/timezone';
+import { toast } from 'react-toastify';
+import ConfirmationModal from '../components/ConfirmationModal';
+import { EmptyStates } from '../components/EmptyState';
+import { TableSkeleton } from '../components/LoadingSkeleton';
+import { useAuth } from '../contexts/AuthContext';
 
 const CallLogs = () => {
   const { isAdmin } = useAuth();
-  const [filter, setFilter] = useState("all");
-  const [selectedDate, setSelectedDate] = useState("");
-  const [dateRange, setDateRange] = useState("all");
+  const [filter, setFilter] = useState('all');
+  const [selectedDate, setSelectedDate] = useState('');
+  const [dateRange, setDateRange] = useState('all');
   const [calls, setCalls] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [playingRecording, setPlayingRecording] = useState(null);
@@ -48,31 +48,31 @@ const CallLogs = () => {
   // Confirmation modal states
   const [confirmationModal, setConfirmationModal] = useState({
     isOpen: false,
-    type: "warning",
-    title: "",
-    message: "",
+    type: 'warning',
+    title: '',
+    message: '',
     onConfirm: null,
-    confirmText: "Confirm",
-    confirmButtonColor: "#3b82f6",
+    confirmText: 'Confirm',
+    confirmButtonColor: '#3b82f6',
   });
 
   // Handle play recording
   const handlePlayRecording = (callId, recordingUrl) => {
-    console.log("🎵 Play button clicked:", { callId, recordingUrl });
+    console.log('🎵 Play button clicked:', { callId, recordingUrl });
 
     if (!recordingUrl) {
-      console.error("❌ No recording URL available");
-      toast.error("No recording available for this call");
+      console.error('❌ No recording URL available');
+      toast.error('No recording available for this call');
       return;
     }
 
     if (playingRecording === callId) {
       // If already playing this recording, stop it
-      console.log("⏹️  Stopping playback");
+      console.log('⏹️  Stopping playback');
       setPlayingRecording(null);
     } else {
       // Play the selected recording
-      console.log("▶️  Starting playback for:", callId);
+      console.log('▶️  Starting playback for:', callId);
       setPlayingRecording(callId);
     }
   };
@@ -81,8 +81,8 @@ const CallLogs = () => {
   const fetchCallLogs = async () => {
     setIsLoading(true);
     try {
-      const token = localStorage.getItem("token");
-      const response = await fetch("/api/reports/logs", {
+      const token = localStorage.getItem('token');
+      const response = await fetch('/api/reports/logs', {
         headers: {
           Authorization: `Bearer ${token}`,
         },
@@ -90,9 +90,9 @@ const CallLogs = () => {
 
       if (response.ok) {
         const data = await response.json();
-        console.log("📋 Call Logs Response:", data.data.callLogs);
+        console.log('📋 Call Logs Response:', data.data.callLogs);
         const callLogs = data.data.callLogs.map((log) => {
-          console.log("🔍 Processing call log:", {
+          console.log('🔍 Processing call log:', {
             id: log.id,
             status: log.status,
             recording_url: log.recording_url,
@@ -101,39 +101,40 @@ const CallLogs = () => {
 
           return {
             id: log.id,
-            contact: log.contact?.name || "Unknown",
-            phone: log.contact?.phone || "N/A",
+            contact: log.contact?.name || 'Unknown',
+            phone: log.contact?.phone || 'N/A',
             status: log.status,
             duration: log.duration
               ? `${Math.floor(log.duration / 60)}:${(log.duration % 60)
                   .toString()
-                  .padStart(2, "0")}`
-              : "0:00",
+                  .padStart(2, '0')}`
+              : '0:00',
             attempts: log.attempt_no || 1,
             timestamp: (() => {
               const date = new Date(log.createdAt);
               // Format: "Oct 27, 6:12 PM"
-              return date.toLocaleDateString("en-US", {
-                month: "short",
-                day: "numeric",
-                year: "numeric",
-                hour: "numeric",
-                minute: "2-digit",
+              return date.toLocaleDateString('en-US', {
+                month: 'short',
+                day: 'numeric',
+                year: 'numeric',
+                hour: 'numeric',
+                minute: '2-digit',
                 hour12: true,
               });
             })(),
             recording: log.recording_url,
             date: formatIndianDate(new Date(log.createdAt)),
+            remark: log.contact?.remark || '',
           };
         });
-        console.log("✅ Processed call logs:", callLogs);
+        console.log('✅ Processed call logs:', callLogs);
         setCalls(callLogs);
       } else {
-        toast.error("Failed to fetch call logs");
+        toast.error('Failed to fetch call logs');
       }
     } catch (error) {
-      console.error("Error fetching call logs:", error);
-      toast.error("Network error. Please try again.");
+      console.error('Error fetching call logs:', error);
+      toast.error('Network error. Please try again.');
     } finally {
       setIsLoading(false);
     }
@@ -146,21 +147,21 @@ const CallLogs = () => {
   // Close calendar when clicking outside
   useEffect(() => {
     const handleClickOutside = (event) => {
-      if (showCalendar && !event.target.closest("[data-calendar]")) {
+      if (showCalendar && !event.target.closest('[data-calendar]')) {
         setShowCalendar(false);
       }
     };
 
-    document.addEventListener("mousedown", handleClickOutside);
+    document.addEventListener('mousedown', handleClickOutside);
     return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener('mousedown', handleClickOutside);
     };
   }, [showCalendar]);
 
   // Filter calls based on status and date
   const filteredCalls = calls.filter((call) => {
     const statusMatch =
-      filter === "all" || (call.status || "").toLowerCase() === filter;
+      filter === 'all' || (call.status || '').toLowerCase() === filter;
 
     if (!selectedDate) return statusMatch;
 
@@ -180,8 +181,8 @@ const CallLogs = () => {
 
   // Clear date filter
   const clearDateFilter = () => {
-    setSelectedDate("");
-    setDateRange("all");
+    setSelectedDate('');
+    setDateRange('all');
   };
 
   // Date range helper functions
@@ -190,19 +191,19 @@ const CallLogs = () => {
     const yesterday = getYesterdayInIndia();
 
     switch (range) {
-      case "today":
+      case 'today':
         return formatIndianDate(today);
-      case "yesterday":
+      case 'yesterday':
         return formatIndianDate(yesterday);
       default:
-        return "";
+        return '';
     }
   };
 
   const handleDateRangeChange = (range) => {
     setDateRange(range);
-    if (range === "all") {
-      setSelectedDate("");
+    if (range === 'all') {
+      setSelectedDate('');
     } else {
       const date = getDateRangeFilter(range);
       setSelectedDate(date);
@@ -211,53 +212,53 @@ const CallLogs = () => {
 
   const getStatusIcon = (status) => {
     switch (status.toLowerCase()) {
-      case "completed":
+      case 'completed':
         return (
           <CheckCircle
-            style={{ width: "20px", height: "20px", color: "#10b981" }}
+            style={{ width: '20px', height: '20px', color: '#10b981' }}
           />
         );
-      case "failed":
+      case 'failed':
         return (
           <XCircle
-            style={{ width: "20px", height: "20px", color: "#ef4444" }}
+            style={{ width: '20px', height: '20px', color: '#ef4444' }}
           />
         );
-      case "switched off":
-      case "switchedoff":
+      case 'switched off':
+      case 'switchedoff':
         return (
           <XCircle
-            style={{ width: "20px", height: "20px", color: "#8b5cf6" }}
+            style={{ width: '20px', height: '20px', color: '#8b5cf6' }}
           />
         );
       default:
         return (
-          <Clock style={{ width: "20px", height: "20px", color: "#f59e0b" }} />
+          <Clock style={{ width: '20px', height: '20px', color: '#f59e0b' }} />
         );
     }
   };
 
   const getStatusColor = (status) => {
     switch (status.toLowerCase()) {
-      case "completed":
-        return { backgroundColor: "#dcfce7", color: "#166534" };
-      case "failed":
-        return { backgroundColor: "#fef2f2", color: "#991b1b" };
-      case "switched off":
-      case "switchedoff":
-        return { backgroundColor: "#f3e8ff", color: "#5b21b6" };
+      case 'completed':
+        return { backgroundColor: '#dcfce7', color: '#166534' };
+      case 'failed':
+        return { backgroundColor: '#fef2f2', color: '#991b1b' };
+      case 'switched off':
+      case 'switchedoff':
+        return { backgroundColor: '#f3e8ff', color: '#5b21b6' };
       default:
-        return { backgroundColor: "#fef3c7", color: "#92400e" };
+        return { backgroundColor: '#fef3c7', color: '#92400e' };
     }
   };
 
   const formatDate = (dateString) => {
     const date = new Date(dateString);
     return formatIndianDateTime(date, {
-      weekday: "short",
-      year: "numeric",
-      month: "short",
-      day: "numeric",
+      weekday: 'short',
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
     });
   };
 
@@ -308,14 +309,14 @@ const CallLogs = () => {
   const selectDate = (date) => {
     // Prevent selection of future dates
     if (isFutureDate(date)) {
-      console.log("Cannot select future dates");
+      console.log('Cannot select future dates');
       return;
     }
 
     const dateString = formatIndianDate(date);
-    console.log("Selected date:", date, "Formatted as:", dateString);
+    console.log('Selected date:', date, 'Formatted as:', dateString);
     setSelectedDate(dateString);
-    setDateRange("custom");
+    setDateRange('custom');
     setShowCalendar(false);
   };
 
@@ -323,37 +324,37 @@ const CallLogs = () => {
   const handleDeleteCall = (callId, contactName) => {
     setConfirmationModal({
       isOpen: true,
-      type: "danger",
-      title: "Delete Call Record",
+      type: 'danger',
+      title: 'Delete Call Record',
       message: `Are you sure you want to delete the call record for ${contactName}? This action cannot be undone.`,
       onConfirm: () => confirmDeleteCall(callId),
-      confirmText: "Delete",
-      confirmButtonColor: "#ef4444",
+      confirmText: 'Delete',
+      confirmButtonColor: '#ef4444',
     });
   };
 
   const confirmDeleteCall = async (callId) => {
     try {
       const response = await fetch(`/api/calls/${callId}`, {
-        method: "DELETE",
+        method: 'DELETE',
         headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${localStorage.getItem("token")}`,
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${localStorage.getItem('token')}`,
         },
       });
 
       if (response.ok) {
         setCalls((prevCalls) => prevCalls.filter((call) => call.id !== callId));
-        toast.success("Call record deleted successfully");
+        toast.success('Call record deleted successfully');
         // Refresh the data to ensure consistency
         fetchCallLogs();
       } else {
         const errorData = await response.json();
-        toast.error(errorData.error || "Failed to delete call record");
+        toast.error(errorData.error || 'Failed to delete call record');
       }
     } catch (error) {
-      console.error("Error deleting call record:", error);
-      toast.error("Network error. Please try again.");
+      console.error('Error deleting call record:', error);
+      toast.error('Network error. Please try again.');
     } finally {
       setConfirmationModal((prev) => ({ ...prev, isOpen: false }));
     }
@@ -362,12 +363,12 @@ const CallLogs = () => {
   const handleRetryCall = (callId, contactName) => {
     setConfirmationModal({
       isOpen: true,
-      type: "warning",
-      title: "Retry Call",
+      type: 'warning',
+      title: 'Retry Call',
       message: `Are you sure you want to retry the call for ${contactName}? This will reset the call status and attempt again.`,
       onConfirm: () => confirmRetryCall(callId),
-      confirmText: "Retry",
-      confirmButtonColor: "#f59e0b",
+      confirmText: 'Retry',
+      confirmButtonColor: '#f59e0b',
     });
   };
 
@@ -379,13 +380,13 @@ const CallLogs = () => {
       setCalls((prevCalls) =>
         prevCalls.map((call) =>
           call.id === callId
-            ? { ...call, status: "pending", duration: "0:00" }
-            : call
-        )
+            ? { ...call, status: 'pending', duration: '0:00' }
+            : call,
+        ),
       );
-      toast.success("Call retry initiated successfully");
+      toast.success('Call retry initiated successfully');
     } catch (error) {
-      toast.error("Failed to retry call");
+      toast.error('Failed to retry call');
     } finally {
       setConfirmationModal((prev) => ({ ...prev, isOpen: false }));
     }
@@ -411,7 +412,7 @@ const CallLogs = () => {
       const date = new Date(
         currentMonth.getFullYear(),
         currentMonth.getMonth() - 1,
-        daysInPrevMonth - i
+        daysInPrevMonth - i,
       );
       days.push({
         date,
@@ -427,7 +428,7 @@ const CallLogs = () => {
       const date = new Date(
         currentMonth.getFullYear(),
         currentMonth.getMonth(),
-        day
+        day,
       );
       days.push({
         date,
@@ -443,7 +444,7 @@ const CallLogs = () => {
       const date = new Date(
         currentMonth.getFullYear(),
         currentMonth.getMonth() + 1,
-        day
+        day,
       );
       days.push({
         date,
@@ -458,27 +459,27 @@ const CallLogs = () => {
   };
 
   return (
-    <div style={{ padding: "24px" }}>
-      <div style={{ marginBottom: "32px" }}>
+    <div style={{ padding: '24px' }}>
+      <div style={{ marginBottom: '32px' }}>
         <h1
           style={{
-            fontSize: "30px",
-            fontWeight: "bold",
-            color: "#111827",
+            fontSize: '30px',
+            fontWeight: 'bold',
+            color: '#111827',
             margin: 0,
-            display: "flex",
-            alignItems: "center",
-            gap: "12px",
+            display: 'flex',
+            alignItems: 'center',
+            gap: '12px',
           }}
         >
-          <Phone style={{ width: "32px", height: "32px" }} />
+          <Phone style={{ width: '32px', height: '32px' }} />
           Call Logs
         </h1>
         <p
           style={{
-            color: "#6b7280",
-            margin: "8px 0 0 0",
-            fontSize: "16px",
+            color: '#6b7280',
+            margin: '8px 0 0 0',
+            fontSize: '16px',
           }}
         >
           View and manage your call history with date filtering
@@ -488,65 +489,65 @@ const CallLogs = () => {
       {/* Filters Section */}
       <div
         style={{
-          backgroundColor: "white",
-          borderRadius: "8px",
-          boxShadow: "0 1px 3px 0 rgba(0, 0, 0, 0.1)",
-          padding: "24px",
-          marginBottom: "24px",
+          backgroundColor: 'white',
+          borderRadius: '8px',
+          boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.1)',
+          padding: '24px',
+          marginBottom: '24px',
         }}
       >
         <div
           style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            marginBottom: "20px",
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            marginBottom: '20px',
           }}
         >
           <h3
             style={{
-              fontSize: "18px",
-              fontWeight: "600",
-              color: "#111827",
+              fontSize: '18px',
+              fontWeight: '600',
+              color: '#111827',
               margin: 0,
-              display: "flex",
-              alignItems: "center",
-              gap: "8px",
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
             }}
           >
-            <Filter style={{ width: "20px", height: "20px" }} />
+            <Filter style={{ width: '20px', height: '20px' }} />
             Filters
           </h3>
           <div
             style={{
-              fontSize: "14px",
-              color: "#6b7280",
-              display: "flex",
-              alignItems: "center",
-              gap: "4px",
+              fontSize: '14px',
+              color: '#6b7280',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px',
             }}
           >
-            <Clock style={{ width: "16px", height: "16px" }} />
+            <Clock style={{ width: '16px', height: '16px' }} />
             {filteredCalls.length} calls found
           </div>
         </div>
 
         <div
           style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
-            gap: "16px",
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+            gap: '16px',
           }}
         >
           {/* Status Filter */}
           <div>
             <label
               style={{
-                display: "block",
-                fontSize: "14px",
-                fontWeight: "500",
-                color: "#374151",
-                marginBottom: "6px",
+                display: 'block',
+                fontSize: '14px',
+                fontWeight: '500',
+                color: '#374151',
+                marginBottom: '6px',
               }}
             >
               Status
@@ -555,12 +556,12 @@ const CallLogs = () => {
               value={filter}
               onChange={(e) => setFilter(e.target.value)}
               style={{
-                width: "100%",
-                padding: "8px 12px",
-                border: "1px solid #d1d5db",
-                borderRadius: "6px",
-                fontSize: "14px",
-                backgroundColor: "white",
+                width: '100%',
+                padding: '8px 12px',
+                border: '1px solid #d1d5db',
+                borderRadius: '6px',
+                fontSize: '14px',
+                backgroundColor: 'white',
               }}
             >
               <option value="all">All Calls</option>
@@ -573,90 +574,90 @@ const CallLogs = () => {
           <div>
             <label
               style={{
-                display: "block",
-                fontSize: "14px",
-                fontWeight: "500",
-                color: "#374151",
-                marginBottom: "6px",
+                display: 'block',
+                fontSize: '14px',
+                fontWeight: '500',
+                color: '#374151',
+                marginBottom: '6px',
               }}
             >
               Date Range
             </label>
-            <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
               <button
-                onClick={() => handleDateRangeChange("all")}
+                onClick={() => handleDateRangeChange('all')}
                 style={{
-                  padding: "6px 12px",
-                  fontSize: "12px",
-                  fontWeight: "500",
-                  borderRadius: "6px",
-                  border: "1px solid #d1d5db",
-                  backgroundColor: dateRange === "all" ? "#3b82f6" : "white",
-                  color: dateRange === "all" ? "white" : "#374151",
-                  cursor: "pointer",
-                  transition: "all 0.2s",
+                  padding: '6px 12px',
+                  fontSize: '12px',
+                  fontWeight: '500',
+                  borderRadius: '6px',
+                  border: '1px solid #d1d5db',
+                  backgroundColor: dateRange === 'all' ? '#3b82f6' : 'white',
+                  color: dateRange === 'all' ? 'white' : '#374151',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s',
                 }}
                 onMouseEnter={(e) => {
-                  if (dateRange !== "all") {
-                    e.target.style.backgroundColor = "#f3f4f6";
+                  if (dateRange !== 'all') {
+                    e.target.style.backgroundColor = '#f3f4f6';
                   }
                 }}
                 onMouseLeave={(e) => {
-                  if (dateRange !== "all") {
-                    e.target.style.backgroundColor = "white";
+                  if (dateRange !== 'all') {
+                    e.target.style.backgroundColor = 'white';
                   }
                 }}
               >
                 All
               </button>
               <button
-                onClick={() => handleDateRangeChange("today")}
+                onClick={() => handleDateRangeChange('today')}
                 style={{
-                  padding: "6px 12px",
-                  fontSize: "12px",
-                  fontWeight: "500",
-                  borderRadius: "6px",
-                  border: "1px solid #d1d5db",
-                  backgroundColor: dateRange === "today" ? "#3b82f6" : "white",
-                  color: dateRange === "today" ? "white" : "#374151",
-                  cursor: "pointer",
-                  transition: "all 0.2s",
+                  padding: '6px 12px',
+                  fontSize: '12px',
+                  fontWeight: '500',
+                  borderRadius: '6px',
+                  border: '1px solid #d1d5db',
+                  backgroundColor: dateRange === 'today' ? '#3b82f6' : 'white',
+                  color: dateRange === 'today' ? 'white' : '#374151',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s',
                 }}
                 onMouseEnter={(e) => {
-                  if (dateRange !== "today") {
-                    e.target.style.backgroundColor = "#f3f4f6";
+                  if (dateRange !== 'today') {
+                    e.target.style.backgroundColor = '#f3f4f6';
                   }
                 }}
                 onMouseLeave={(e) => {
-                  if (dateRange !== "today") {
-                    e.target.style.backgroundColor = "white";
+                  if (dateRange !== 'today') {
+                    e.target.style.backgroundColor = 'white';
                   }
                 }}
               >
                 Today
               </button>
               <button
-                onClick={() => handleDateRangeChange("yesterday")}
+                onClick={() => handleDateRangeChange('yesterday')}
                 style={{
-                  padding: "6px 12px",
-                  fontSize: "12px",
-                  fontWeight: "500",
-                  borderRadius: "6px",
-                  border: "1px solid #d1d5db",
+                  padding: '6px 12px',
+                  fontSize: '12px',
+                  fontWeight: '500',
+                  borderRadius: '6px',
+                  border: '1px solid #d1d5db',
                   backgroundColor:
-                    dateRange === "yesterday" ? "#3b82f6" : "white",
-                  color: dateRange === "yesterday" ? "white" : "#374151",
-                  cursor: "pointer",
-                  transition: "all 0.2s",
+                    dateRange === 'yesterday' ? '#3b82f6' : 'white',
+                  color: dateRange === 'yesterday' ? 'white' : '#374151',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s',
                 }}
                 onMouseEnter={(e) => {
-                  if (dateRange !== "yesterday") {
-                    e.target.style.backgroundColor = "#f3f4f6";
+                  if (dateRange !== 'yesterday') {
+                    e.target.style.backgroundColor = '#f3f4f6';
                   }
                 }}
                 onMouseLeave={(e) => {
-                  if (dateRange !== "yesterday") {
-                    e.target.style.backgroundColor = "white";
+                  if (dateRange !== 'yesterday') {
+                    e.target.style.backgroundColor = 'white';
                   }
                 }}
               >
@@ -669,37 +670,37 @@ const CallLogs = () => {
           <div>
             <label
               style={{
-                display: "block",
-                fontSize: "14px",
-                fontWeight: "500",
-                color: "#374151",
-                marginBottom: "6px",
+                display: 'block',
+                fontSize: '14px',
+                fontWeight: '500',
+                color: '#374151',
+                marginBottom: '6px',
               }}
             >
               Select Date
             </label>
-            <div style={{ position: "relative" }} data-calendar>
+            <div style={{ position: 'relative' }} data-calendar>
               <button
                 onClick={() => setShowCalendar(!showCalendar)}
                 style={{
-                  width: "100%",
-                  padding: "8px 12px",
-                  border: "1px solid #d1d5db",
-                  borderRadius: "6px",
-                  fontSize: "14px",
-                  backgroundColor: "white",
-                  cursor: "pointer",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  textAlign: "left",
+                  width: '100%',
+                  padding: '8px 12px',
+                  border: '1px solid #d1d5db',
+                  borderRadius: '6px',
+                  fontSize: '14px',
+                  backgroundColor: 'white',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  textAlign: 'left',
                 }}
               >
                 <span>
-                  {selectedDate ? formatDate(selectedDate) : "Choose a date"}
+                  {selectedDate ? formatDate(selectedDate) : 'Choose a date'}
                 </span>
                 <Calendar
-                  style={{ width: "16px", height: "16px", color: "#6b7280" }}
+                  style={{ width: '16px', height: '16px', color: '#6b7280' }}
                 />
               </button>
 
@@ -708,70 +709,70 @@ const CallLogs = () => {
                 <div
                   data-calendar
                   style={{
-                    position: "absolute",
-                    top: "100%",
+                    position: 'absolute',
+                    top: '100%',
                     left: 0,
                     right: 0,
                     zIndex: 50,
-                    backgroundColor: "white",
-                    border: "1px solid #d1d5db",
-                    borderRadius: "8px",
+                    backgroundColor: 'white',
+                    border: '1px solid #d1d5db',
+                    borderRadius: '8px',
                     boxShadow:
-                      "0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)",
-                    marginTop: "4px",
-                    padding: "16px",
+                      '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)',
+                    marginTop: '4px',
+                    padding: '16px',
                   }}
                 >
                   {/* Calendar Header */}
                   <div
                     style={{
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      marginBottom: "16px",
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      marginBottom: '16px',
                     }}
                   >
                     <button
                       onClick={() => navigateMonth(-1)}
                       style={{
-                        padding: "4px",
-                        border: "none",
-                        backgroundColor: "transparent",
-                        cursor: "pointer",
-                        borderRadius: "4px",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
+                        padding: '4px',
+                        border: 'none',
+                        backgroundColor: 'transparent',
+                        cursor: 'pointer',
+                        borderRadius: '4px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
                       }}
                     >
                       <ChevronLeft
                         style={{
-                          width: "20px",
-                          height: "20px",
-                          color: "#374151",
+                          width: '20px',
+                          height: '20px',
+                          color: '#374151',
                         }}
                       />
                     </button>
 
-                    <div style={{ textAlign: "center" }}>
+                    <div style={{ textAlign: 'center' }}>
                       <h3
                         style={{
-                          fontSize: "16px",
-                          fontWeight: "600",
-                          color: "#111827",
+                          fontSize: '16px',
+                          fontWeight: '600',
+                          color: '#111827',
                           margin: 0,
                         }}
                       >
-                        {currentMonth.toLocaleDateString("en-US", {
-                          month: "long",
-                          year: "numeric",
+                        {currentMonth.toLocaleDateString('en-US', {
+                          month: 'long',
+                          year: 'numeric',
                         })}
                       </h3>
                       <div
                         style={{
-                          fontSize: "10px",
-                          color: "#6b7280",
-                          marginTop: "2px",
+                          fontSize: '10px',
+                          color: '#6b7280',
+                          marginTop: '2px',
                         }}
                       >
                         Indian Standard Time (IST)
@@ -781,21 +782,21 @@ const CallLogs = () => {
                     <button
                       onClick={() => navigateMonth(1)}
                       style={{
-                        padding: "4px",
-                        border: "none",
-                        backgroundColor: "transparent",
-                        cursor: "pointer",
-                        borderRadius: "4px",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
+                        padding: '4px',
+                        border: 'none',
+                        backgroundColor: 'transparent',
+                        cursor: 'pointer',
+                        borderRadius: '4px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
                       }}
                     >
                       <ChevronRight
                         style={{
-                          width: "20px",
-                          height: "20px",
-                          color: "#374151",
+                          width: '20px',
+                          height: '20px',
+                          color: '#374151',
                         }}
                       />
                     </button>
@@ -804,28 +805,28 @@ const CallLogs = () => {
                   {/* Calendar Days */}
                   <div
                     style={{
-                      display: "grid",
-                      gridTemplateColumns: "repeat(7, 1fr)",
-                      gap: "4px",
+                      display: 'grid',
+                      gridTemplateColumns: 'repeat(7, 1fr)',
+                      gap: '4px',
                     }}
                   >
                     {/* Day Headers */}
-                    {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map(
+                    {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(
                       (day) => (
                         <div
                           key={day}
                           style={{
-                            padding: "8px 4px",
-                            textAlign: "center",
-                            fontSize: "12px",
-                            fontWeight: "600",
-                            color: "#6b7280",
-                            backgroundColor: "#f9fafb",
+                            padding: '8px 4px',
+                            textAlign: 'center',
+                            fontSize: '12px',
+                            fontWeight: '600',
+                            color: '#6b7280',
+                            backgroundColor: '#f9fafb',
                           }}
                         >
                           {day}
                         </div>
-                      )
+                      ),
                     )}
 
                     {/* Calendar Days */}
@@ -837,48 +838,48 @@ const CallLogs = () => {
                           onClick={() => selectDate(dayData.date)}
                           disabled={isFuture}
                           style={{
-                            padding: "8px 4px",
-                            border: "none",
+                            padding: '8px 4px',
+                            border: 'none',
                             backgroundColor: dayData.isSelected
-                              ? "#3b82f6"
+                              ? '#3b82f6'
                               : dayData.isToday
-                              ? "#eff6ff"
+                              ? '#eff6ff'
                               : dayData.hasCalls
-                              ? "#f0fdf4"
+                              ? '#f0fdf4'
                               : isFuture
-                              ? "#f9fafb"
-                              : "transparent",
+                              ? '#f9fafb'
+                              : 'transparent',
                             color: dayData.isSelected
-                              ? "white"
+                              ? 'white'
                               : isFuture
-                              ? "#d1d5db"
+                              ? '#d1d5db'
                               : dayData.isCurrentMonth
-                              ? "#111827"
-                              : "#9ca3af",
-                            cursor: isFuture ? "not-allowed" : "pointer",
-                            borderRadius: "4px",
-                            fontSize: "14px",
-                            fontWeight: dayData.isToday ? "600" : "400",
-                            position: "relative",
-                            minHeight: "32px",
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
+                              ? '#111827'
+                              : '#9ca3af',
+                            cursor: isFuture ? 'not-allowed' : 'pointer',
+                            borderRadius: '4px',
+                            fontSize: '14px',
+                            fontWeight: dayData.isToday ? '600' : '400',
+                            position: 'relative',
+                            minHeight: '32px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
                             opacity: isFuture ? 0.5 : 1,
                           }}
                           onMouseEnter={(e) => {
                             if (!dayData.isSelected && !isFuture) {
                               e.target.style.backgroundColor =
-                                dayData.isCurrentMonth ? "#f3f4f6" : "#f9fafb";
+                                dayData.isCurrentMonth ? '#f3f4f6' : '#f9fafb';
                             }
                           }}
                           onMouseLeave={(e) => {
                             if (!dayData.isSelected && !isFuture) {
                               e.target.style.backgroundColor = dayData.isToday
-                                ? "#eff6ff"
+                                ? '#eff6ff'
                                 : dayData.hasCalls
-                                ? "#f0fdf4"
-                                : "transparent";
+                                ? '#f0fdf4'
+                                : 'transparent';
                             }
                           }}
                         >
@@ -886,14 +887,14 @@ const CallLogs = () => {
                           {!dayData.isSelected && !isFuture && (
                             <div
                               style={{
-                                position: "absolute",
-                                bottom: "2px",
-                                width: "4px",
-                                height: "4px",
+                                position: 'absolute',
+                                bottom: '2px',
+                                width: '4px',
+                                height: '4px',
                                 backgroundColor: dayData.hasCalls
-                                  ? "#10b981" // green when data exists
-                                  : "#ef4444", // red when no data
-                                borderRadius: "50%",
+                                  ? '#10b981' // green when data exists
+                                  : '#ef4444', // red when no data
+                                borderRadius: '50%',
                               }}
                             />
                           )}
@@ -905,12 +906,12 @@ const CallLogs = () => {
                   {/* Calendar Footer */}
                   <div
                     style={{
-                      marginTop: "16px",
-                      paddingTop: "16px",
-                      borderTop: "1px solid #e5e7eb",
-                      display: "flex",
-                      justifyContent: "space-between",
-                      gap: "8px",
+                      marginTop: '16px',
+                      paddingTop: '16px',
+                      borderTop: '1px solid #e5e7eb',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      gap: '8px',
                     }}
                   >
                     <button
@@ -919,14 +920,14 @@ const CallLogs = () => {
                         selectDate(today);
                       }}
                       style={{
-                        padding: "6px 12px",
-                        backgroundColor: "#f3f4f6",
-                        color: "#374151",
-                        border: "none",
-                        borderRadius: "4px",
-                        cursor: "pointer",
-                        fontSize: "12px",
-                        fontWeight: "500",
+                        padding: '6px 12px',
+                        backgroundColor: '#f3f4f6',
+                        color: '#374151',
+                        border: 'none',
+                        borderRadius: '4px',
+                        cursor: 'pointer',
+                        fontSize: '12px',
+                        fontWeight: '500',
                       }}
                     >
                       Today (IST)
@@ -934,14 +935,14 @@ const CallLogs = () => {
                     <button
                       onClick={clearDateFilter}
                       style={{
-                        padding: "6px 12px",
-                        backgroundColor: "#ef4444",
-                        color: "white",
-                        border: "none",
-                        borderRadius: "4px",
-                        cursor: "pointer",
-                        fontSize: "12px",
-                        fontWeight: "500",
+                        padding: '6px 12px',
+                        backgroundColor: '#ef4444',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '4px',
+                        cursor: 'pointer',
+                        fontSize: '12px',
+                        fontWeight: '500',
                       }}
                     >
                       Clear
@@ -953,28 +954,28 @@ const CallLogs = () => {
           </div>
 
           {/* Clear Filters */}
-          {(selectedDate || filter !== "all") && (
-            <div style={{ display: "flex", alignItems: "end" }}>
+          {(selectedDate || filter !== 'all') && (
+            <div style={{ display: 'flex', alignItems: 'end' }}>
               <button
                 onClick={() => {
-                  setFilter("all");
+                  setFilter('all');
                   clearDateFilter();
                 }}
                 style={{
-                  backgroundColor: "#6b7280",
-                  color: "white",
-                  padding: "8px 16px",
-                  borderRadius: "6px",
-                  border: "none",
-                  cursor: "pointer",
-                  fontSize: "14px",
-                  fontWeight: "500",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "6px",
+                  backgroundColor: '#6b7280',
+                  color: 'white',
+                  padding: '8px 16px',
+                  borderRadius: '6px',
+                  border: 'none',
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                  fontWeight: '500',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
                 }}
               >
-                <XCircle style={{ width: "16px", height: "16px" }} />
+                <XCircle style={{ width: '16px', height: '16px' }} />
                 Clear All Filters
               </button>
             </div>
@@ -982,33 +983,33 @@ const CallLogs = () => {
         </div>
 
         {/* Active Filters Display */}
-        {(selectedDate || filter !== "all") && (
+        {(selectedDate || filter !== 'all') && (
           <div
             style={{
-              marginTop: "16px",
-              padding: "12px",
-              backgroundColor: "#f3f4f6",
-              borderRadius: "6px",
-              display: "flex",
-              alignItems: "center",
-              gap: "8px",
-              flexWrap: "wrap",
+              marginTop: '16px',
+              padding: '12px',
+              backgroundColor: '#f3f4f6',
+              borderRadius: '6px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              flexWrap: 'wrap',
             }}
           >
             <span
-              style={{ fontSize: "14px", color: "#374151", fontWeight: "500" }}
+              style={{ fontSize: '14px', color: '#374151', fontWeight: '500' }}
             >
               Active filters:
             </span>
-            {filter !== "all" && (
+            {filter !== 'all' && (
               <span
                 style={{
-                  backgroundColor: "#3b82f6",
-                  color: "white",
-                  padding: "4px 8px",
-                  borderRadius: "4px",
-                  fontSize: "12px",
-                  fontWeight: "500",
+                  backgroundColor: '#3b82f6',
+                  color: 'white',
+                  padding: '4px 8px',
+                  borderRadius: '4px',
+                  fontSize: '12px',
+                  fontWeight: '500',
                 }}
               >
                 Status: {filter}
@@ -1017,12 +1018,12 @@ const CallLogs = () => {
             {selectedDate && (
               <span
                 style={{
-                  backgroundColor: "#10b981",
-                  color: "white",
-                  padding: "4px 8px",
-                  borderRadius: "4px",
-                  fontSize: "12px",
-                  fontWeight: "500",
+                  backgroundColor: '#10b981',
+                  color: 'white',
+                  padding: '4px 8px',
+                  borderRadius: '4px',
+                  fontSize: '12px',
+                  fontWeight: '500',
                 }}
               >
                 Date: {formatDate(selectedDate)}
@@ -1035,31 +1036,31 @@ const CallLogs = () => {
       {/* Call Logs Table */}
       <div
         style={{
-          backgroundColor: "white",
-          borderRadius: "8px",
-          boxShadow: "0 1px 3px 0 rgba(0, 0, 0, 0.1)",
-          overflow: "hidden",
+          backgroundColor: 'white',
+          borderRadius: '8px',
+          boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.1)',
+          overflow: 'hidden',
         }}
       >
         <div
           style={{
-            padding: "20px 24px",
-            borderBottom: "1px solid #e5e7eb",
-            backgroundColor: "#f9fafb",
+            padding: '20px 24px',
+            borderBottom: '1px solid #e5e7eb',
+            backgroundColor: '#f9fafb',
           }}
         >
           <h3
             style={{
-              fontSize: "18px",
-              fontWeight: "600",
-              color: "#111827",
+              fontSize: '18px',
+              fontWeight: '600',
+              color: '#111827',
               margin: 0,
-              display: "flex",
-              alignItems: "center",
-              gap: "8px",
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
             }}
           >
-            <Calendar style={{ width: "20px", height: "20px" }} />
+            <Calendar style={{ width: '20px', height: '20px' }} />
             Call History
           </h3>
         </div>
@@ -1090,6 +1091,9 @@ const CallLogs = () => {
                   </th>
                   <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Attempts
+                  </th>
+                  <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Remark
                   </th>
                   {isAdmin && (
                     <th className="px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -1151,7 +1155,7 @@ const CallLogs = () => {
                     <td className="px-4 py-4 text-center">
                       <div className="flex items-center justify-center gap-3">
                         {call.recording &&
-                        call.duration !== "0:00" &&
+                        call.duration !== '0:00' &&
                         call.duration !== 0 ? (
                           <>
                             <button
@@ -1159,11 +1163,11 @@ const CallLogs = () => {
                                 if (call.recording) {
                                   window.open(
                                     call.recording,
-                                    "_blank",
-                                    "noopener,noreferrer"
+                                    '_blank',
+                                    'noopener,noreferrer',
                                   );
                                 } else {
-                                  toast.error("No recording available");
+                                  toast.error('No recording available');
                                 }
                               }}
                               className="inline-flex items-center justify-center p-1.5 rounded-full border-2 border-blue-600 text-blue-600 hover:bg-blue-50 transition-colors"
@@ -1172,12 +1176,12 @@ const CallLogs = () => {
                               <Play className="w-3 h-3" />
                             </button>
                             <div className="text-sm text-gray-900 font-mono">
-                              {call.duration || "0:00"}
+                              {call.duration || '0:00'}
                             </div>
                           </>
                         ) : (
                           <div className="text-sm text-gray-900 font-mono">
-                            {call.duration || "0:00"}
+                            {call.duration || '0:00'}
                           </div>
                         )}
                       </div>
@@ -1190,11 +1194,33 @@ const CallLogs = () => {
                       </div>
                     </td>
 
+                    {/* Remark (display only - from contact) */}
+                    <td className="px-4 py-4 text-center">
+                      <div className="inline-flex items-center gap-2 justify-center">
+                        <span
+                          className={`inline-block w-2 h-2 rounded-full ${
+                            call.remark === 'accept'
+                              ? 'bg-green-500'
+                              : call.remark === 'reject'
+                              ? 'bg-red-500'
+                              : 'bg-gray-300'
+                          }`}
+                        />
+                        <span className="text-xs font-medium text-gray-700">
+                          {call.remark === 'accept'
+                            ? 'Accept'
+                            : call.remark === 'reject'
+                            ? 'Reject'
+                            : '-'}
+                        </span>
+                      </div>
+                    </td>
+
                     {/* Actions */}
                     {isAdmin && (
                       <td className="px-4 py-4">
                         <div className="flex items-center justify-end gap-1.5">
-                          {call.status === "failed" && (
+                          {call.status === 'failed' && (
                             <button
                               onClick={() =>
                                 handleRetryCall(call.id, call.contact)
@@ -1249,15 +1275,15 @@ const CallLogs = () => {
             <div className="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
               <div>
                 <p className="text-sm text-gray-700">
-                  Showing{" "}
+                  Showing{' '}
                   <span className="font-medium">
                     {filteredCalls.length === 0 ? 0 : startIndex + 1}
-                  </span>{" "}
-                  to{" "}
+                  </span>{' '}
+                  to{' '}
                   <span className="font-medium">
                     {Math.min(endIndex, filteredCalls.length)}
-                  </span>{" "}
-                  of <span className="font-medium">{filteredCalls.length}</span>{" "}
+                  </span>{' '}
+                  of <span className="font-medium">{filteredCalls.length}</span>{' '}
                   results
                 </p>
               </div>
@@ -1321,8 +1347,8 @@ const CallLogs = () => {
                         onClick={() => setCurrentPage(pageNum)}
                         className={`relative inline-flex items-center px-4 py-2 text-sm font-medium border ${
                           currentPage === pageNum
-                            ? "z-10 bg-blue-50 border-blue-500 text-blue-600"
-                            : "bg-white border-gray-300 text-gray-500 hover:bg-gray-50"
+                            ? 'z-10 bg-blue-50 border-blue-500 text-blue-600'
+                            : 'bg-white border-gray-300 text-gray-500 hover:bg-gray-50'
                         }`}
                       >
                         {pageNum}

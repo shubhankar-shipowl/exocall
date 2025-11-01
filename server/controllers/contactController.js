@@ -55,6 +55,39 @@ const deleteContact = async (req, res) => {
   }
 };
 
+// Manually override contact status and update latest call log
+const setStatusOverride = async (req, res) => {
+  try {
+    const { status } = req.body;
+    const contactId = req.params.id;
+
+    if (!status || typeof status !== 'string') {
+      return res.status(400).json({ error: 'status is required' });
+    }
+
+    const contact = await Contact.findByPk(contactId);
+    if (!contact) {
+      return res.status(404).json({ error: 'Contact not found' });
+    }
+
+    await contact.update({ status });
+
+    // Update most recent call log for this contact if any
+    const lastLog = await CallLog.findOne({
+      where: { contact_id: contact.id },
+      order: [['createdAt', 'DESC']],
+    });
+    if (lastLog) {
+      await lastLog.update({ status });
+    }
+
+    res.json({ success: true, contact });
+  } catch (error) {
+    console.error('Error setting status override:', error);
+    res.status(500).json({ error: 'Failed to set status override' });
+  }
+};
+
 const initiateCall = async (req, res) => {
   try {
     // Fetch contact by ID from MySQL
@@ -360,6 +393,38 @@ const getContactById = async (req, res) => {
   }
 };
 
+// Update remark for a contact
+const setRemark = async (req, res) => {
+  try {
+    const { remark } = req.body;
+    const contactId = req.params.id;
+
+    // Validate remark value
+    if (
+      remark !== null &&
+      remark !== '' &&
+      remark !== 'accept' &&
+      remark !== 'reject'
+    ) {
+      return res
+        .status(400)
+        .json({ error: 'remark must be "accept", "reject", or empty string' });
+    }
+
+    const contact = await Contact.findByPk(contactId);
+    if (!contact) {
+      return res.status(404).json({ error: 'Contact not found' });
+    }
+
+    await contact.update({ remark: remark || null });
+
+    res.json({ success: true, contact });
+  } catch (error) {
+    console.error('Error setting remark:', error);
+    res.status(500).json({ error: 'Failed to set remark' });
+  }
+};
+
 module.exports = {
   getContacts,
   getContactById,
@@ -368,4 +433,6 @@ module.exports = {
   deleteContact,
   initiateCall,
   addNote,
+  setStatusOverride,
+  setRemark,
 };

@@ -1,8 +1,8 @@
-const { Contact, CallLog, User } = require("../associations");
-const { sequelize, Sequelize } = require("../config/database");
-const XLSX = require("xlsx");
-const { Op } = require("sequelize");
-const axios = require("axios");
+const { Contact, CallLog, User } = require('../associations');
+const { sequelize, Sequelize } = require('../config/database');
+const XLSX = require('xlsx');
+const { Op } = require('sequelize');
+const axios = require('axios');
 
 // Get call statistics for reports
 const getCallStatistics = async (req, res) => {
@@ -26,7 +26,7 @@ const getCallStatistics = async (req, res) => {
     }
 
     // Add status filter if provided
-    if (status && status !== "all") {
+    if (status && status !== 'all') {
       whereClause.status = status;
     }
 
@@ -36,18 +36,18 @@ const getCallStatistics = async (req, res) => {
     // Get calls by status
     const callsByStatus = await CallLog.findAll({
       attributes: [
-        "status",
-        [sequelize.fn("COUNT", sequelize.col("id")), "count"],
+        'status',
+        [sequelize.fn('COUNT', sequelize.col('id')), 'count'],
       ],
       where: whereClause,
-      group: ["status"],
+      group: ['status'],
     });
 
     // Get success rate
     const completedCalls = await CallLog.count({
       where: {
         ...whereClause,
-        status: "Completed",
+        status: 'Completed',
       },
     });
 
@@ -57,7 +57,7 @@ const getCallStatistics = async (req, res) => {
     // Get average duration
     const avgDurationResult = await CallLog.findOne({
       attributes: [
-        [sequelize.fn("AVG", sequelize.col("duration")), "avgDuration"],
+        [sequelize.fn('AVG', sequelize.col('duration')), 'avgDuration'],
       ],
       where: {
         ...whereClause,
@@ -70,13 +70,13 @@ const getCallStatistics = async (req, res) => {
     // Get calls by day (for charts)
     const callsByDay = await CallLog.findAll({
       attributes: [
-        [sequelize.fn("DATE", sequelize.col("createdAt")), "date"],
-        [sequelize.fn("COUNT", sequelize.col("id")), "count"],
-        [sequelize.fn("AVG", sequelize.col("duration")), "avgDuration"],
+        [sequelize.fn('DATE', sequelize.col('createdAt')), 'date'],
+        [sequelize.fn('COUNT', sequelize.col('id')), 'count'],
+        [sequelize.fn('AVG', sequelize.col('duration')), 'avgDuration'],
       ],
       where: whereClause,
-      group: [sequelize.fn("DATE", sequelize.col("createdAt"))],
-      order: [[sequelize.fn("DATE", sequelize.col("createdAt")), "ASC"]],
+      group: [sequelize.fn('DATE', sequelize.col('createdAt'))],
+      order: [[sequelize.fn('DATE', sequelize.col('createdAt')), 'ASC']],
     });
 
     // Get top performing agents (if agentId filter is not applied)
@@ -84,27 +84,27 @@ const getCallStatistics = async (req, res) => {
     if (!agentId) {
       topAgents = await CallLog.findAll({
         attributes: [
-          "contact_id",
-          [sequelize.fn("COUNT", sequelize.col("CallLog.id")), "totalCalls"],
+          'contact_id',
+          [sequelize.fn('COUNT', sequelize.col('CallLog.id')), 'totalCalls'],
           [
             sequelize.fn(
-              "SUM",
+              'SUM',
               sequelize.literal(
-                "CASE WHEN CallLog.status = 'Completed' THEN 1 ELSE 0 END"
-              )
+                "CASE WHEN CallLog.status = 'Completed' THEN 1 ELSE 0 END",
+              ),
             ),
-            "successfulCalls",
+            'successfulCalls',
           ],
         ],
         where: whereClause,
-        group: ["contact_id"],
-        order: [[sequelize.literal("successfulCalls"), "DESC"]],
+        group: ['contact_id'],
+        order: [[sequelize.literal('successfulCalls'), 'DESC']],
         limit: 10,
         include: [
           {
             model: Contact,
-            as: "contact",
-            attributes: ["name", "phone"],
+            as: 'contact',
+            attributes: ['name', 'phone'],
           },
         ],
       });
@@ -126,8 +126,8 @@ const getCallStatistics = async (req, res) => {
           avgDuration: Math.round(item.dataValues.avgDuration || 0),
         })),
         topAgents: topAgents.map((item) => ({
-          contactName: item.Contact?.name || "Unknown",
-          contactPhone: item.Contact?.phone || "Unknown",
+          contactName: item.Contact?.name || 'Unknown',
+          contactPhone: item.Contact?.phone || 'Unknown',
           totalCalls: parseInt(item.dataValues.totalCalls),
           successfulCalls: parseInt(item.dataValues.successfulCalls),
           successRate:
@@ -136,16 +136,16 @@ const getCallStatistics = async (req, res) => {
                   (item.dataValues.successfulCalls /
                     item.dataValues.totalCalls) *
                     100 *
-                    100
+                    100,
                 ) / 100
               : 0,
         })),
       },
     });
   } catch (error) {
-    console.error("Error getting call statistics:", error);
+    console.error('Error getting call statistics:', error);
     res.status(500).json({
-      error: "Failed to get call statistics",
+      error: 'Failed to get call statistics',
       details: error.message,
     });
   }
@@ -154,7 +154,7 @@ const getCallStatistics = async (req, res) => {
 // Export calls to Excel
 const exportCallsToExcel = async (req, res) => {
   try {
-    const { startDate, endDate, status, format = "xlsx" } = req.query;
+    const { startDate, endDate, status, format = 'xlsx' } = req.query;
 
     // Build where clause
     let whereClause = {};
@@ -172,7 +172,7 @@ const exportCallsToExcel = async (req, res) => {
       };
     }
 
-    if (status && status !== "all") {
+    if (status && status !== 'all') {
       whereClause.status = status;
     }
 
@@ -182,23 +182,23 @@ const exportCallsToExcel = async (req, res) => {
       include: [
         {
           model: Contact,
-          as: "contact",
-          attributes: ["name", "phone", "message"],
+          as: 'contact',
+          attributes: ['name', 'phone', 'message', 'remark'],
         },
       ],
-      order: [["createdAt", "DESC"]],
+      order: [['createdAt', 'DESC']],
     });
 
     // Helper function to parse message
     const parseMessage = (message) => {
       if (!message) return {};
 
-      const parts = message.split(" | ");
+      const parts = message.split(' | ');
       const data = {};
 
       parts.forEach((part) => {
-        if (part.includes(":")) {
-          const [key, value] = part.split(":").map((s) => s.trim());
+        if (part.includes(':')) {
+          const [key, value] = part.split(':').map((s) => s.trim());
           data[key] = value;
         }
       });
@@ -210,30 +210,38 @@ const exportCallsToExcel = async (req, res) => {
     const exportData = callLogs.map((log, index) => {
       const messageData = parseMessage(log.contact?.message);
 
+      // Format duration
+      const durationFormatted = log.duration
+        ? `${Math.floor(log.duration / 60)}m ${log.duration % 60}s`
+        : '0:00';
+
+      // Only include recording URL if duration is not 0
+      const hasDuration = log.duration && log.duration > 0;
+      const recordingURL = hasDuration ? log.recording_url || 'N/A' : 'N/A';
+
       return {
-        "S.No": index + 1,
-        "Contact Name": log.contact?.name || "N/A",
-        Phone: log.contact?.phone || "N/A",
-        Order: messageData.Order || "N/A",
-        Product: messageData.Product || "N/A",
-        Qty: messageData.Qty || "N/A",
-        Value: messageData.Value || "N/A",
-        Address: messageData.Address || "N/A",
-        Pincode: messageData.Pincode || "N/A",
-        "Attempt No": log.attempt_no,
+        'S.No': index + 1,
+        'Contact Name': log.contact?.name || 'N/A',
+        Phone: log.contact?.phone || 'N/A',
+        Order: messageData.Order || 'N/A',
+        Product: messageData.Product || 'N/A',
+        Qty: messageData.Qty || 'N/A',
+        Value: messageData.Value || 'N/A',
+        Address: messageData.Address || 'N/A',
+        Pincode: messageData.Pincode || 'N/A',
+        'Attempt No': log.attempt_no,
         Status: log.status,
-        "Duration (formatted)": log.duration
-          ? `${Math.floor(log.duration / 60)}m ${log.duration % 60}s`
-          : "N/A",
-        "Recording URL": log.recording_url || "N/A",
-        "Call Date": new Date(log.createdAt).toLocaleString("en-US", {
-          timeZone: "Asia/Kolkata",
-          year: "numeric",
-          month: "2-digit",
-          day: "2-digit",
-          hour: "2-digit",
-          minute: "2-digit",
-          second: "2-digit",
+        'Duration (formatted)': durationFormatted,
+        'Recording URL': recordingURL,
+        Remark: log.contact?.remark || log.remark || '-',
+        'Call Date': new Date(log.createdAt).toLocaleString('en-US', {
+          timeZone: 'Asia/Kolkata',
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit',
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit',
         }),
       };
     });
@@ -257,36 +265,37 @@ const exportCallsToExcel = async (req, res) => {
       { wch: 15 }, // Status
       { wch: 18 }, // Duration (formatted)
       { wch: 40 }, // Recording URL
+      { wch: 12 }, // Remark
       { wch: 25 }, // Call Date
     ];
-    worksheet["!cols"] = columnWidths;
+    worksheet['!cols'] = columnWidths;
 
-    XLSX.utils.book_append_sheet(workbook, worksheet, "Call Logs");
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Call Logs');
 
     // Generate filename
-    const timestamp = new Date().toISOString().split("T")[0];
+    const timestamp = new Date().toISOString().split('T')[0];
     const filename = `call_logs_${timestamp}.${format}`;
 
     // Set response headers
     res.setHeader(
-      "Content-Type",
-      format === "csv"
-        ? "text/csv"
-        : "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+      'Content-Type',
+      format === 'csv'
+        ? 'text/csv'
+        : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     );
-    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
 
     // Convert to buffer and send
     const buffer = XLSX.write(workbook, {
-      type: "buffer",
-      bookType: format === "csv" ? "csv" : "xlsx",
+      type: 'buffer',
+      bookType: format === 'csv' ? 'csv' : 'xlsx',
     });
 
     res.send(buffer);
   } catch (error) {
-    console.error("Error exporting calls to Excel:", error);
+    console.error('Error exporting calls to Excel:', error);
     res.status(500).json({
-      error: "Failed to export calls",
+      error: 'Failed to export calls',
       details: error.message,
     });
   }
@@ -301,8 +310,8 @@ const getCallLogs = async (req, res) => {
       status,
       page = 1,
       limit = 50,
-      sortBy = "createdAt",
-      sortOrder = "DESC",
+      sortBy = 'createdAt',
+      sortOrder = 'DESC',
     } = req.query;
 
     const offset = (page - 1) * limit;
@@ -323,7 +332,7 @@ const getCallLogs = async (req, res) => {
       };
     }
 
-    if (status && status !== "all") {
+    if (status && status !== 'all') {
       whereClause.status = status;
     }
 
@@ -333,15 +342,16 @@ const getCallLogs = async (req, res) => {
       include: [
         {
           model: Contact,
-          as: "contact",
+          as: 'contact',
           attributes: [
-            "name",
-            "phone",
-            "message",
-            "agent_notes",
-            "product_name",
-            "price",
-            "address",
+            'name',
+            'phone',
+            'message',
+            'agent_notes',
+            'product_name',
+            'price',
+            'address',
+            'remark',
           ],
         },
       ],
@@ -370,9 +380,9 @@ const getCallLogs = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error("Error getting call logs:", error);
+    console.error('Error getting call logs:', error);
     res.status(500).json({
-      error: "Failed to get call logs",
+      error: 'Failed to get call logs',
       details: error.message,
     });
   }
@@ -402,10 +412,10 @@ const getDashboardSummary = async (req, res) => {
     // Get contact statistics
     const contactStats = await Contact.findAll({
       attributes: [
-        "status",
-        [sequelize.fn("COUNT", sequelize.col("id")), "count"],
+        'status',
+        [sequelize.fn('COUNT', sequelize.col('id')), 'count'],
       ],
-      group: ["status"],
+      group: ['status'],
     });
 
     // Get call statistics
@@ -413,7 +423,7 @@ const getDashboardSummary = async (req, res) => {
     const completedCalls = await CallLog.count({
       where: {
         ...whereClause,
-        status: "Completed",
+        status: 'Completed',
       },
     });
 
@@ -434,12 +444,12 @@ const getDashboardSummary = async (req, res) => {
     // Get average duration for completed calls only (Per successful call)
     const avgDurationResult = await CallLog.findOne({
       attributes: [
-        [sequelize.fn("AVG", sequelize.col("duration")), "avgDuration"],
+        [sequelize.fn('AVG', sequelize.col('duration')), 'avgDuration'],
       ],
       where: {
         ...whereClause,
         duration: { [Op.ne]: null },
-        status: "Completed", // Only include completed calls
+        status: 'Completed', // Only include completed calls
       },
     });
 
@@ -451,7 +461,7 @@ const getDashboardSummary = async (req, res) => {
         contacts: {
           total: contactStats.reduce(
             (sum, item) => sum + parseInt(item.dataValues.count),
-            0
+            0,
           ),
           byStatus: contactStats.map((item) => ({
             status: item.status,
@@ -471,9 +481,9 @@ const getDashboardSummary = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error("Error getting dashboard summary:", error);
+    console.error('Error getting dashboard summary:', error);
     res.status(500).json({
-      error: "Failed to get dashboard summary",
+      error: 'Failed to get dashboard summary',
       details: error.message,
     });
   }
@@ -487,23 +497,23 @@ const getDailyTrends = async (req, res) => {
     // Get daily call counts for the last N days
     const dailyTrends = await CallLog.findAll({
       attributes: [
-        [sequelize.fn("DATE", sequelize.col("createdAt")), "date"],
-        [sequelize.fn("COUNT", sequelize.col("id")), "count"],
+        [sequelize.fn('DATE', sequelize.col('createdAt')), 'date'],
+        [sequelize.fn('COUNT', sequelize.col('id')), 'count'],
         [
           sequelize.fn(
-            "SUM",
+            'SUM',
             sequelize.literal(
-              'CASE WHEN status = "Completed" THEN 1 ELSE 0 END'
-            )
+              'CASE WHEN status = "Completed" THEN 1 ELSE 0 END',
+            ),
           ),
-          "completed",
+          'completed',
         ],
         [
           sequelize.fn(
-            "SUM",
-            sequelize.literal('CASE WHEN status = "Failed" THEN 1 ELSE 0 END')
+            'SUM',
+            sequelize.literal('CASE WHEN status = "Failed" THEN 1 ELSE 0 END'),
           ),
-          "failed",
+          'failed',
         ],
       ],
       where: {
@@ -511,8 +521,8 @@ const getDailyTrends = async (req, res) => {
           [Op.gte]: new Date(Date.now() - (days - 1) * 24 * 60 * 60 * 1000),
         },
       },
-      group: [sequelize.fn("DATE", sequelize.col("createdAt"))],
-      order: [[sequelize.fn("DATE", sequelize.col("createdAt")), "ASC"]],
+      group: [sequelize.fn('DATE', sequelize.col('createdAt'))],
+      order: [[sequelize.fn('DATE', sequelize.col('createdAt')), 'ASC']],
       raw: true,
     });
 
@@ -522,8 +532,8 @@ const getDailyTrends = async (req, res) => {
       calls: parseInt(trend.count) || 0,
       completed: parseInt(trend.completed) || 0,
       failed: parseInt(trend.failed) || 0,
-      dayName: new Date(trend.date).toLocaleDateString("en-US", {
-        weekday: "short",
+      dayName: new Date(trend.date).toLocaleDateString('en-US', {
+        weekday: 'short',
       }),
     }));
 
@@ -532,9 +542,9 @@ const getDailyTrends = async (req, res) => {
       data: formattedTrends,
     });
   } catch (error) {
-    console.error("Error getting daily trends:", error);
+    console.error('Error getting daily trends:', error);
     res.status(500).json({
-      error: "Failed to get daily trends",
+      error: 'Failed to get daily trends',
       details: error.message,
     });
   }
@@ -553,16 +563,16 @@ const getHourlyTrends = async (req, res) => {
 
     const hourlyTrends = await CallLog.findAll({
       attributes: [
-        [sequelize.fn("HOUR", sequelize.col("createdAt")), "hour"],
-        [sequelize.fn("COUNT", sequelize.col("id")), "count"],
+        [sequelize.fn('HOUR', sequelize.col('createdAt')), 'hour'],
+        [sequelize.fn('COUNT', sequelize.col('id')), 'count'],
         [
           sequelize.fn(
-            "SUM",
+            'SUM',
             sequelize.literal(
-              'CASE WHEN status = "Completed" THEN 1 ELSE 0 END'
-            )
+              'CASE WHEN status = "Completed" THEN 1 ELSE 0 END',
+            ),
           ),
-          "completed",
+          'completed',
         ],
       ],
       where: {
@@ -570,8 +580,8 @@ const getHourlyTrends = async (req, res) => {
           [Op.between]: [startOfDay, endOfDay],
         },
       },
-      group: [sequelize.fn("HOUR", sequelize.col("createdAt"))],
-      order: [[sequelize.fn("HOUR", sequelize.col("createdAt")), "ASC"]],
+      group: [sequelize.fn('HOUR', sequelize.col('createdAt'))],
+      order: [[sequelize.fn('HOUR', sequelize.col('createdAt')), 'ASC']],
       raw: true,
     });
 
@@ -583,7 +593,7 @@ const getHourlyTrends = async (req, res) => {
         hour: hour,
         calls: existingData ? parseInt(existingData.count) : 0,
         completed: existingData ? parseInt(existingData.completed) : 0,
-        timeLabel: `${hour.toString().padStart(2, "0")}:00`,
+        timeLabel: `${hour.toString().padStart(2, '0')}:00`,
       });
     }
 
@@ -592,9 +602,9 @@ const getHourlyTrends = async (req, res) => {
       data: hourlyData,
     });
   } catch (error) {
-    console.error("Error getting hourly trends:", error);
+    console.error('Error getting hourly trends:', error);
     res.status(500).json({
-      error: "Failed to get hourly trends",
+      error: 'Failed to get hourly trends',
       details: error.message,
     });
   }
@@ -606,8 +616,8 @@ const proxyRecording = async (req, res) => {
     const { url } = req.query;
 
     if (!url) {
-      console.error("❌ Missing recording URL parameter");
-      return res.status(400).json({ error: "Missing recording URL parameter" });
+      console.error('❌ Missing recording URL parameter');
+      return res.status(400).json({ error: 'Missing recording URL parameter' });
     }
 
     // Extract Exotel credentials from environment
@@ -615,8 +625,8 @@ const proxyRecording = async (req, res) => {
     const exotelToken = process.env.EXOTEL_TOKEN;
 
     if (!exotelSid || !exotelToken) {
-      console.error("❌ Missing Exotel credentials in environment");
-      return res.status(500).json({ error: "Server configuration error" });
+      console.error('❌ Missing Exotel credentials in environment');
+      return res.status(500).json({ error: 'Server configuration error' });
     }
 
     try {
@@ -626,55 +636,55 @@ const proxyRecording = async (req, res) => {
           username: exotelSid,
           password: exotelToken,
         },
-        responseType: "stream",
+        responseType: 'stream',
         timeout: 30000, // 30 second timeout
         headers: {
-          Accept: "audio/*",
+          Accept: 'audio/*',
         },
       });
 
       // Set appropriate headers for audio streaming
-      if (response.headers["content-type"]) {
-        res.setHeader("Content-Type", response.headers["content-type"]);
+      if (response.headers['content-type']) {
+        res.setHeader('Content-Type', response.headers['content-type']);
       } else {
-        res.setHeader("Content-Type", "audio/mpeg");
+        res.setHeader('Content-Type', 'audio/mpeg');
       }
 
-      res.setHeader("Content-Disposition", `inline; filename="recording.mp3"`);
-      res.setHeader("Accept-Ranges", "bytes");
-      res.setHeader("Cache-Control", "public, max-age=3600");
+      res.setHeader('Content-Disposition', `inline; filename="recording.mp3"`);
+      res.setHeader('Accept-Ranges', 'bytes');
+      res.setHeader('Cache-Control', 'public, max-age=3600');
 
       // Stream the audio data to the client
       response.data.pipe(res);
 
-      response.data.on("error", (err) => {
-        console.error("❌ Error streaming recording:", err.message);
+      response.data.on('error', (err) => {
+        console.error('❌ Error streaming recording:', err.message);
         if (!res.headersSent) {
-          res.status(500).json({ error: "Error streaming audio" });
+          res.status(500).json({ error: 'Error streaming audio' });
         }
       });
 
-      res.on("close", () => {
-        console.log("✅ Recording stream completed");
+      res.on('close', () => {
+        console.log('✅ Recording stream completed');
       });
     } catch (error) {
-      console.error("❌ Error fetching recording:", error.message);
-      console.error("   Status:", error.response?.status);
-      console.error("   Status Text:", error.response?.statusText);
-      console.error("   Response:", error.response?.data);
+      console.error('❌ Error fetching recording:', error.message);
+      console.error('   Status:', error.response?.status);
+      console.error('   Status Text:', error.response?.statusText);
+      console.error('   Response:', error.response?.data);
 
       if (!res.headersSent) {
         res.status(500).json({
-          error: "Failed to fetch recording",
+          error: 'Failed to fetch recording',
           details: error.message,
         });
       }
     }
   } catch (error) {
-    console.error("Error in proxyRecording:", error);
+    console.error('Error in proxyRecording:', error);
     if (!res.headersSent) {
       res.status(500).json({
-        error: "Failed to proxy recording",
+        error: 'Failed to proxy recording',
         details: error.message,
       });
     }

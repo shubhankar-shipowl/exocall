@@ -1,8 +1,8 @@
-const { DataTypes } = require("sequelize");
-const { sequelize } = require("../config/database");
+const { DataTypes } = require('sequelize');
+const { sequelize } = require('../config/database');
 
 const CallLog = sequelize.define(
-  "CallLog",
+  'CallLog',
   {
     id: {
       type: DataTypes.INTEGER,
@@ -13,8 +13,8 @@ const CallLog = sequelize.define(
       type: DataTypes.INTEGER,
       allowNull: false,
       references: {
-        model: "contacts",
-        key: "id",
+        model: 'contacts',
+        key: 'id',
       },
     },
     attempt_no: {
@@ -33,20 +33,25 @@ const CallLog = sequelize.define(
     duration: {
       type: DataTypes.INTEGER,
       allowNull: true,
-      comment: "Duration in seconds",
+      comment: 'Duration in seconds',
     },
     exotel_call_sid: {
       type: DataTypes.STRING,
       allowNull: true,
-      comment: "Exotel Call SID for tracking",
+      comment: 'Exotel Call SID for tracking',
+    },
+    remark: {
+      type: DataTypes.STRING(50),
+      allowNull: true,
+      comment: 'Remark: accept or reject',
     },
   },
   {
-    tableName: "call_logs",
+    tableName: 'call_logs',
     timestamps: true,
-    createdAt: "createdAt",
-    updatedAt: "updatedAt",
-  }
+    createdAt: 'createdAt',
+    updatedAt: 'updatedAt',
+  },
 );
 
 module.exports = CallLog;

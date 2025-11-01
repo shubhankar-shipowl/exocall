@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Phone,
   RefreshCw,
@@ -16,13 +16,13 @@ import {
   Save,
   Edit,
   Trash2,
-} from "lucide-react";
-import { toast } from "react-toastify";
-import ConfirmationModal from "./ConfirmationModal";
-import CallModal from "./CallModal";
-import { EmptyStates } from "./EmptyState";
-import { TableSkeleton } from "./LoadingSkeleton";
-import { useAuth } from "../contexts/AuthContext";
+} from 'lucide-react';
+import { toast } from 'react-toastify';
+import ConfirmationModal from './ConfirmationModal';
+import CallModal from './CallModal';
+import { EmptyStates } from './EmptyState';
+import { TableSkeleton } from './LoadingSkeleton';
+import { useAuth } from '../contexts/AuthContext';
 
 const CallTable = () => {
   const { isAdmin } = useAuth();
@@ -33,79 +33,121 @@ const CallTable = () => {
   const [noteModal, setNoteModal] = useState({
     isOpen: false,
     contactId: null,
-    contactName: "",
-    currentNotes: "",
-    newNote: "",
+    contactName: '',
+    currentNotes: '',
+    newNote: '',
   });
   const [editingNote, setEditingNote] = useState({
     index: null,
-    value: "",
-    originalValue: "",
-    timestamp: "",
+    value: '',
+    originalValue: '',
+    timestamp: '',
   });
   const [callModal, setCallModal] = useState({
     isOpen: false,
     contact: null,
-    callStatus: "In Progress",
+    callStatus: 'In Progress',
     callDuration: 0,
   });
 
   // Store polling interval ref to cleanup properly
   const pollingIntervalRef = React.useRef(null);
-  const [dateFilter, setDateFilter] = useState("");
+  // Track which contact is being polled for call status
+  const activeCallPollingRef = React.useRef(null);
+  const [dateFilter, setDateFilter] = useState('');
   const [showDatePicker, setShowDatePicker] = useState(false);
-  const [dateRange, setDateRange] = useState("all");
+  const [dateRange, setDateRange] = useState('all');
   const [currentMonth, setCurrentMonth] = useState(new Date());
-  const [storeFilter, setStoreFilter] = useState("all");
+  const [storeFilter, setStoreFilter] = useState('all');
 
   // Safe modal state setter
   const safeSetCallModal = (newState) => {
     try {
-      if (typeof newState === "function") {
+      if (typeof newState === 'function') {
         setCallModal((prev) => {
           const result = newState(prev);
           // Validate the result
-          if (result && typeof result === "object") {
+          if (result && typeof result === 'object') {
             return {
               isOpen: Boolean(result.isOpen),
               contact: result.contact || null,
-              callStatus: result.callStatus || "In Progress",
+              callStatus: result.callStatus || 'In Progress',
               callDuration: Number(result.callDuration) || 0,
             };
           }
           return prev;
         });
-      } else if (typeof newState === "object") {
+      } else if (typeof newState === 'object') {
         setCallModal({
           isOpen: Boolean(newState.isOpen),
           contact: newState.contact || null,
-          callStatus: newState.callStatus || "In Progress",
+          callStatus: newState.callStatus || 'In Progress',
           callDuration: Number(newState.callDuration) || 0,
         });
       }
     } catch (error) {
-      console.error("Error setting call modal state:", error);
+      console.error('Error setting call modal state:', error);
     }
   };
 
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
+  // Per-row manual status override - initialize synchronously from localStorage
+  // This ensures overrides are available before first render
+  const [statusOverrideById, setStatusOverrideById] = useState(() => {
+    try {
+      const stored = localStorage.getItem('statusOverrides');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (parsed && typeof parsed === 'object') {
+          return parsed;
+        }
+      }
+    } catch (_) {}
+    return {};
+  });
+  const [pendingOverrideById, setPendingOverrideById] = useState({});
+  const [openOverrideId, setOpenOverrideId] = useState(null);
+  const [overrideMenuPos, setOverrideMenuPos] = useState({ top: 0, left: 0 });
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [pendingRemarkById, setPendingRemarkById] = useState({});
+  const [openRemarkId, setOpenRemarkId] = useState(null);
+  const [remarkMenuPos, setRemarkMenuPos] = useState({ top: 0, left: 0 });
+
+  const overrideOptions = [
+    { value: '', label: 'API Status', color: 'bg-gray-300', icon: Clock },
+    {
+      value: 'Switched Off',
+      label: 'Switch Off',
+      color: 'bg-red-500',
+      icon: XCircle,
+    },
+    {
+      value: 'Not Connect',
+      label: 'Not Connect',
+      color: 'bg-red-500',
+      icon: AlertCircle,
+    },
+    { value: 'Busy', label: 'Busy', color: 'bg-orange-500', icon: Phone },
+    { value: 'Ringing', label: 'Ringing', color: 'bg-blue-500', icon: Clock },
+    { value: 'Failed', label: 'Failed', color: 'bg-red-500', icon: XCircle },
+  ];
 
   // Confirmation modal states
   const [confirmationModal, setConfirmationModal] = useState({
     isOpen: false,
-    type: "warning",
-    title: "",
-    message: "",
+    type: 'warning',
+    title: '',
+    message: '',
     onConfirm: null,
-    confirmText: "Confirm",
-    confirmButtonColor: "#3b82f6",
+    confirmText: 'Confirm',
+    confirmButtonColor: '#3b82f6',
   });
 
   // Date filtering helper functions
   const formatDate = (dateInput) => {
-    if (!dateInput) return "";
+    if (!dateInput) return '';
 
     let date;
     if (dateInput instanceof Date) {
@@ -116,8 +158,8 @@ const CallTable = () => {
 
     // Format as YYYY-MM-DD using local date (not UTC)
     const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, "0");
-    const day = String(date.getDate()).padStart(2, "0");
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
 
     return `${year}-${month}-${day}`;
   };
@@ -135,12 +177,12 @@ const CallTable = () => {
     yesterday.setDate(yesterday.getDate() - 1);
 
     switch (range) {
-      case "today":
+      case 'today':
         return formatDate(today);
-      case "yesterday":
+      case 'yesterday':
         return formatDate(yesterday);
       default:
-        return "";
+        return '';
     }
   };
 
@@ -150,25 +192,63 @@ const CallTable = () => {
       // Add cache-busting parameter
       const timestamp = new Date().getTime();
       console.log(
-        "🔄 [Frontend CallTable] - Fetching contacts from /api/contacts"
+        '🔄 [Frontend CallTable] - Fetching contacts from /api/contacts',
       );
       console.log(
-        "[Frontend CallTable] Request URL:",
-        `/api/contacts?t=${timestamp}`
+        '[Frontend CallTable] Request URL:',
+        `/api/contacts?t=${timestamp}`,
       );
 
       const response = await fetch(`/api/contacts?t=${timestamp}`, {
         headers: {
-          Authorization: `Bearer ${localStorage.getItem("token")}`,
+          Authorization: `Bearer ${localStorage.getItem('token')}`,
         },
       });
 
-      console.log("[Frontend CallTable] Response status:", response.status);
+      console.log('[Frontend CallTable] Response status:', response.status);
 
       if (response.ok) {
         const data = await response.json();
+        // Always load and merge overrides from localStorage when fetching contacts
+        // This ensures overrides persist across refreshes and section changes
+        try {
+          const stored = localStorage.getItem('statusOverrides');
+          if (stored) {
+            const parsed = JSON.parse(stored);
+            if (parsed && typeof parsed === 'object') {
+              // Merge with existing overrides, prioritizing localStorage
+              setStatusOverrideById((prev) => {
+                const merged = { ...prev, ...parsed };
+                // If localStorage has an override that doesn't match API status, sync to backend
+                // This handles cases where webhooks might have overwritten our override
+                Object.keys(parsed).forEach((contactId) => {
+                  const overrideStatus = parsed[contactId];
+                  if (overrideStatus) {
+                    const contact = data.find(
+                      (c) => String(c.id) === String(contactId),
+                    );
+                    if (contact && contact.status !== overrideStatus) {
+                      // Silently sync override to backend (non-blocking)
+                      fetch(`/api/contacts/${contactId}/status-override`, {
+                        method: 'PUT',
+                        headers: {
+                          'Content-Type': 'application/json',
+                          Authorization: `Bearer ${localStorage.getItem(
+                            'token',
+                          )}`,
+                        },
+                        body: JSON.stringify({ status: overrideStatus }),
+                      }).catch(() => {});
+                    }
+                  }
+                });
+                return merged;
+              });
+            }
+          }
+        } catch (_) {}
         console.log(
-          "✅ [Frontend CallTable] - Successfully received contacts:",
+          '✅ [Frontend CallTable] - Successfully received contacts:',
           {
             count: data.length,
             sampleContact:
@@ -179,16 +259,16 @@ const CallTable = () => {
                     product_name: data[0].product_name,
                     price: data[0].price,
                   }
-                : "No contacts",
+                : 'No contacts',
             allContacts: data,
-          }
+          },
         );
         setContacts(data);
 
         // Update call modal if it's open
         if (callModal.isOpen && callModal.contact) {
           const updatedContact = data.find(
-            (c) => c.id === callModal.contact.id
+            (c) => c.id === callModal.contact.id,
           );
           if (
             updatedContact &&
@@ -202,12 +282,12 @@ const CallTable = () => {
           }
         }
       } else {
-        console.error("Failed to fetch contacts");
-        toast.error("Failed to load contacts");
+        console.error('Failed to fetch contacts');
+        toast.error('Failed to load contacts');
       }
     } catch (error) {
-      console.error("Error fetching contacts:", error);
-      toast.error("Network error while loading contacts");
+      console.error('Error fetching contacts:', error);
+      toast.error('Network error while loading contacts');
     } finally {
       setIsLoading(false);
     }
@@ -229,17 +309,76 @@ const CallTable = () => {
     };
   }, [fetchContacts]);
 
+  // Close override menu on outside click/scroll/resize
+  useEffect(() => {
+    const close = () => setOpenOverrideId(null);
+    if (openOverrideId !== null) {
+      window.addEventListener('scroll', close, true);
+      window.addEventListener('resize', close);
+      document.addEventListener('click', close);
+    }
+    return () => {
+      window.removeEventListener('scroll', close, true);
+      window.removeEventListener('resize', close);
+      document.removeEventListener('click', close);
+    };
+  }, [openOverrideId]);
+
+  // Close remark menu on outside click/scroll/resize
+  useEffect(() => {
+    const close = () => setOpenRemarkId(null);
+    if (openRemarkId !== null) {
+      window.addEventListener('scroll', close, true);
+      window.addEventListener('resize', close);
+      document.addEventListener('click', close);
+    }
+    return () => {
+      window.removeEventListener('scroll', close, true);
+      window.removeEventListener('resize', close);
+      document.removeEventListener('click', close);
+    };
+  }, [openRemarkId]);
+
+  // Reload overrides from localStorage if it changes externally (e.g., another tab)
+  useEffect(() => {
+    const handleStorageChange = (e) => {
+      if (e.key === 'statusOverrides') {
+        try {
+          if (e.newValue) {
+            const parsed = JSON.parse(e.newValue);
+            if (parsed && typeof parsed === 'object') {
+              setStatusOverrideById(parsed);
+            }
+          } else {
+            setStatusOverrideById({});
+          }
+        } catch (_) {}
+      }
+    };
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
+  }, []);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        'statusOverrides',
+        JSON.stringify(statusOverrideById),
+      );
+    } catch (_) {}
+  }, [statusOverrideById]);
+
   // Close date picker when clicking outside
   useEffect(() => {
     const handleClickOutside = (event) => {
-      if (showDatePicker && !event.target.closest("[data-date-picker]")) {
+      if (showDatePicker && !event.target.closest('[data-date-picker]')) {
         setShowDatePicker(false);
       }
     };
 
-    document.addEventListener("mousedown", handleClickOutside);
+    document.addEventListener('mousedown', handleClickOutside);
     return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener('mousedown', handleClickOutside);
     };
   }, [showDatePicker]);
 
@@ -250,6 +389,8 @@ const CallTable = () => {
   ].sort();
 
   const filteredContacts = contacts.filter((contact) => {
+    // Effective status considers manual override
+    const effectiveStatus = statusOverrideById[contact.id] || contact.status;
     // Date filter
     if (dateFilter) {
       const contactDate = contact.createdAt || contact.created_at;
@@ -257,8 +398,13 @@ const CallTable = () => {
     }
 
     // Store filter
-    if (storeFilter !== "all") {
+    if (storeFilter !== 'all') {
       if (!contact.store || contact.store !== storeFilter) return false;
+    }
+
+    // Status filter
+    if (statusFilter !== 'all') {
+      if ((effectiveStatus || '').toLowerCase() !== statusFilter) return false;
     }
 
     return true;
@@ -300,8 +446,8 @@ const CallTable = () => {
   // Date picker handlers
   const handleDateRangeChange = (range) => {
     setDateRange(range);
-    if (range === "all") {
-      setDateFilter("");
+    if (range === 'all') {
+      setDateFilter('');
     } else {
       const date = getDateRangeFilter(range);
       setDateFilter(date);
@@ -312,7 +458,7 @@ const CallTable = () => {
   const handleCustomDateChange = (date) => {
     const formattedDate = formatDate(date);
     setDateFilter(formattedDate);
-    setDateRange("custom");
+    setDateRange('custom');
     setShowDatePicker(false);
   };
 
@@ -375,30 +521,30 @@ const CallTable = () => {
   };
 
   const clearDateFilter = () => {
-    setDateFilter("");
-    setDateRange("all");
+    setDateFilter('');
+    setDateRange('all');
     setShowDatePicker(false);
-    setStoreFilter("all");
+    setStoreFilter('all');
   };
 
   // Handle call initiation
   const handleCall = async (contactId, contactName) => {
     try {
-      console.log("handleCall called with:", { contactId, contactName });
+      console.log('handleCall called with:', { contactId, contactName });
 
       const contact = contacts.find((c) => c.id === contactId);
       if (!contact) {
-        console.error("Contact not found for ID:", contactId);
-        toast.error("Contact not found");
+        console.error('Contact not found for ID:', contactId);
+        toast.error('Contact not found');
         return;
       }
 
-      console.log("Opening call modal for contact:", contact);
+      console.log('Opening call modal for contact:', contact);
 
       safeSetCallModal({
         isOpen: true,
         contact: contact,
-        callStatus: "In Progress",
+        callStatus: 'In Progress',
         callDuration: 0,
       });
 
@@ -411,13 +557,23 @@ const CallTable = () => {
       await confirmCall(contactId, contactName);
 
       // Start polling for status updates every 5 seconds
+      // Store the contact ID being polled so polling continues even if modal closes
+      activeCallPollingRef.current = contactId;
       pollingIntervalRef.current = setInterval(async () => {
         try {
-          const response = await fetch(`/api/contacts/${contactId}`, {
-            headers: {
-              Authorization: `Bearer ${localStorage.getItem("token")}`,
+          // Only poll if we have an active call
+          if (!activeCallPollingRef.current) {
+            return;
+          }
+
+          const response = await fetch(
+            `/api/contacts/${activeCallPollingRef.current}`,
+            {
+              headers: {
+                Authorization: `Bearer ${localStorage.getItem('token')}`,
+              },
             },
-          });
+          );
 
           if (response.ok) {
             const contactData = await response.json();
@@ -425,20 +581,23 @@ const CallTable = () => {
               // Update the contact in the list
               setContacts((prevContacts) =>
                 prevContacts.map((contact) =>
-                  contact.id === contactId
+                  contact.id === activeCallPollingRef.current
                     ? {
                         ...contact,
                         status: contactData.status,
                         attempts: contactData.attempts || contact.attempts,
                         duration: contactData.duration || contact.duration,
                       }
-                    : contact
-                )
+                    : contact,
+                ),
               );
 
-              // Update modal status
+              // Update modal status if modal is still open
               safeSetCallModal((prev) => {
-                if (prev.isOpen && prev.contact?.id === contactId) {
+                if (
+                  prev.isOpen &&
+                  prev.contact?.id === activeCallPollingRef.current
+                ) {
                   return {
                     ...prev,
                     callStatus: contactData.status,
@@ -450,50 +609,60 @@ const CallTable = () => {
 
               // If status is final (not "In Progress" or "Initiated"), stop polling
               const finalStatuses = [
-                "Completed",
-                "Failed",
-                "Hangup",
-                "Busy",
-                "No Answer",
-                "Switched Off",
-                "Cancelled",
+                'Completed',
+                'Failed',
+                'Hangup',
+                'Busy',
+                'No Answer',
+                'Switched Off',
+                'Cancelled',
               ];
               if (
-                contactData.status !== "In Progress" &&
-                contactData.status !== "Initiated" &&
-                contactData.status !== "Not Called" &&
+                contactData.status !== 'In Progress' &&
+                contactData.status !== 'Initiated' &&
+                contactData.status !== 'Not Called' &&
                 finalStatuses.includes(contactData.status)
               ) {
+                // Stop polling when call reaches final status
+                // Capture contact ID before clearing the ref
+                const completedContactId = activeCallPollingRef.current;
+
                 if (pollingIntervalRef.current) {
                   clearInterval(pollingIntervalRef.current);
                   pollingIntervalRef.current = null;
                 }
+                activeCallPollingRef.current = null;
                 console.log(`Call ended with status: ${contactData.status}`);
 
-                // Update modal status to show final status
-                safeSetCallModal((prev) => ({
-                  ...prev,
-                  callStatus: contactData.status,
-                  callDuration: contactData.duration || 0,
-                }));
+                // Update modal status to show final status if modal is still open
+                safeSetCallModal((prev) => {
+                  if (prev.isOpen && prev.contact?.id === completedContactId) {
+                    return {
+                      ...prev,
+                      callStatus: contactData.status,
+                      callDuration: contactData.duration || 0,
+                    };
+                  }
+                  return prev;
+                });
               }
             }
           }
         } catch (error) {
-          console.error("Error polling status:", error);
+          console.error('Error polling status:', error);
         }
       }, 5000); // Poll every 5 seconds
 
       // No auto-close timeout - modal stays open until user closes it or call ends
     } catch (error) {
-      console.error("Error in handleCall:", error);
-      toast.error("Failed to initiate call. Please try again.");
+      console.error('Error in handleCall:', error);
+      toast.error('Failed to initiate call. Please try again.');
     }
   };
 
   const confirmCall = async (contactId, contactName) => {
     try {
-      console.log("confirmCall called with:", { contactId, contactName });
+      console.log('confirmCall called with:', { contactId, contactName });
 
       // Add contact to calling set and show immediate feedback
       setCallingContacts((prev) => new Set(prev).add(contactId));
@@ -503,25 +672,25 @@ const CallTable = () => {
       toast.info(`Calling ${contactName}...`);
 
       const response = await fetch(`/api/contacts/${contactId}/call`, {
-        method: "POST",
+        method: 'POST',
         headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${localStorage.getItem("token")}`,
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${localStorage.getItem('token')}`,
         },
       });
 
-      console.log("API response status:", response.status);
+      console.log('API response status:', response.status);
 
       let result;
       try {
         result = await response.json();
-        console.log("API response data:", result);
-        console.log("Response OK:", response.ok);
-        console.log("Result success:", result.success);
-        console.log("Result message:", result.message);
+        console.log('API response data:', result);
+        console.log('Response OK:', response.ok);
+        console.log('Result success:', result.success);
+        console.log('Result message:', result.message);
       } catch (parseError) {
-        console.error("Error parsing JSON response:", parseError);
-        throw new Error("Invalid response from server");
+        console.error('Error parsing JSON response:', parseError);
+        throw new Error('Invalid response from server');
       }
 
       if (response.ok && result.success === true) {
@@ -529,26 +698,26 @@ const CallTable = () => {
         // Only update the modal to show "In Progress" status
         safeSetCallModal((prev) => ({
           ...prev,
-          callStatus: "In Progress",
+          callStatus: 'In Progress',
         }));
 
         toast.success(
-          `Call initiated for ${contactName}! Please wait for the call to connect.`
+          `Call initiated for ${contactName}! Please wait for the call to connect.`,
         );
       } else if (response.ok && result.success === false) {
         // Handle explicit failure from backend
-        const errorMessage = result.message || result.error || "Call failed!";
+        const errorMessage = result.message || result.error || 'Call failed!';
         toast.error(errorMessage);
 
         // Keep modal open but update status to show error
         safeSetCallModal((prev) => ({
           ...prev,
-          callStatus: "Failed",
+          callStatus: 'Failed',
         }));
       } else {
         // Handle HTTP error responses or missing success field
-        const errorMessage = result.message || result.error || "Call failed!";
-        console.error("Unexpected response:", {
+        const errorMessage = result.message || result.error || 'Call failed!';
+        console.error('Unexpected response:', {
           response: response.ok,
           result,
         });
@@ -557,16 +726,16 @@ const CallTable = () => {
         // Keep modal open but update status to show error
         safeSetCallModal((prev) => ({
           ...prev,
-          callStatus: "Failed",
+          callStatus: 'Failed',
         }));
       }
     } catch (error) {
-      console.error("Error initiating call:", error);
-      toast.error("Network error. Please try again.");
+      console.error('Error initiating call:', error);
+      toast.error('Network error. Please try again.');
       // Keep modal open but update status to show error
       safeSetCallModal((prev) => ({
         ...prev,
-        callStatus: "Failed",
+        callStatus: 'Failed',
       }));
     } finally {
       // Remove contact from calling set
@@ -588,8 +757,8 @@ const CallTable = () => {
               status: newStatus,
               duration: duration,
             }
-          : contact
-      )
+          : contact,
+      ),
     );
 
     // Update modal if it's open for this contact
@@ -604,16 +773,38 @@ const CallTable = () => {
 
   // Handle call modal close
   const handleCallModalClose = () => {
-    // Clear polling interval when modal is closed
-    if (pollingIntervalRef.current) {
-      clearInterval(pollingIntervalRef.current);
-      pollingIntervalRef.current = null;
+    // Don't clear polling interval here - let it continue until call completes
+    // Only clear if call has already reached a final status
+    const currentContact = callModal.contact;
+    if (currentContact) {
+      const finalStatuses = [
+        'Completed',
+        'Failed',
+        'Hangup',
+        'Busy',
+        'No Answer',
+        'Switched Off',
+        'Cancelled',
+      ];
+
+      // Only stop polling if status is already final
+      if (
+        callModal.callStatus &&
+        finalStatuses.includes(callModal.callStatus)
+      ) {
+        if (pollingIntervalRef.current) {
+          clearInterval(pollingIntervalRef.current);
+          pollingIntervalRef.current = null;
+        }
+        activeCallPollingRef.current = null;
+      }
+      // Otherwise, polling will continue in background until call completes
     }
 
     safeSetCallModal({
       isOpen: false,
       contact: null,
-      callStatus: "In Progress",
+      callStatus: 'In Progress',
       callDuration: 0,
     });
   };
@@ -635,21 +826,21 @@ const CallTable = () => {
       }
 
       // Skip Excel import information completely
-      if (trimmed.startsWith("Imported from Excel.")) {
+      if (trimmed.startsWith('Imported from Excel.')) {
         return; // Skip this line entirely
       }
 
       // Check if it's a timestamped note entry [timestamp] note
       if (/^\[\d{1,2}\/\d{1,2}\/\d{4}/.test(trimmed)) {
         if (!hasNotes) {
-          formatted.push({ type: "header", content: "Agent Notes" });
+          formatted.push({ type: 'header', content: 'Agent Notes' });
           hasNotes = true;
         }
 
         const match = trimmed.match(/^\[([^\]]+)\]\s*(.+)$/);
         if (match && match[2]) {
           formatted.push({
-            type: "note",
+            type: 'note',
             originalIndex: index,
             timestamp: match[1].trim(),
             content: match[2].trim(),
@@ -657,9 +848,9 @@ const CallTable = () => {
           });
         } else {
           formatted.push({
-            type: "note",
+            type: 'note',
             originalIndex: index,
-            timestamp: "",
+            timestamp: '',
             content: trimmed,
             fullLine: trimmed,
           });
@@ -668,17 +859,17 @@ const CallTable = () => {
       // Only include other text if it's not empty and not import-related
       else if (
         trimmed &&
-        !trimmed.toLowerCase().includes("order:") &&
-        !trimmed.toLowerCase().includes("product:")
+        !trimmed.toLowerCase().includes('order:') &&
+        !trimmed.toLowerCase().includes('product:')
       ) {
         if (!hasNotes) {
-          formatted.push({ type: "header", content: "Agent Notes" });
+          formatted.push({ type: 'header', content: 'Agent Notes' });
           hasNotes = true;
         }
         formatted.push({
-          type: "note",
+          type: 'note',
           originalIndex: index,
-          timestamp: "",
+          timestamp: '',
           content: trimmed,
           fullLine: trimmed,
         });
@@ -699,14 +890,14 @@ const CallTable = () => {
       const trimmed = line.trim();
 
       // Skip Excel import information completely
-      if (trimmed.startsWith("Imported from Excel.")) {
+      if (trimmed.startsWith('Imported from Excel.')) {
         return;
       }
 
       // Skip import-related lines
       if (
-        trimmed.toLowerCase().includes("order:") ||
-        trimmed.toLowerCase().includes("product:")
+        trimmed.toLowerCase().includes('order:') ||
+        trimmed.toLowerCase().includes('product:')
       ) {
         return;
       }
@@ -728,7 +919,7 @@ const CallTable = () => {
         agentNotes.push({
           originalIndex: index,
           fullLine: trimmed,
-          timestamp: "",
+          timestamp: '',
           content: trimmed,
         });
       }
@@ -739,41 +930,41 @@ const CallTable = () => {
 
   // Delete a note
   const handleDeleteNote = async (originalIndex) => {
-    if (!confirm("Are you sure you want to delete this note?")) {
+    if (!confirm('Are you sure you want to delete this note?')) {
       return;
     }
 
     try {
       const lines = noteModal.currentNotes.split(/\r?\n/);
       const updatedLines = lines.filter((_, idx) => idx !== originalIndex);
-      const updatedNotes = updatedLines.join("\n").trim();
+      const updatedNotes = updatedLines.join('\n').trim();
 
       const response = await fetch(
         `/api/contact-detail/${noteModal.contactId}/note`,
         {
-          method: "POST",
+          method: 'POST',
           headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${localStorage.getItem("token")}`,
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${localStorage.getItem('token')}`,
           },
           body: JSON.stringify({ notes: updatedNotes }),
-        }
+        },
       );
 
       if (response.ok) {
         const data = await response.json();
         setNoteModal((prev) => ({
           ...prev,
-          currentNotes: data.contact.agent_notes || "",
+          currentNotes: data.contact.agent_notes || '',
         }));
-        toast.success("Note deleted successfully!");
+        toast.success('Note deleted successfully!');
         await fetchContacts();
       } else {
-        toast.error("Failed to delete note");
+        toast.error('Failed to delete note');
       }
     } catch (error) {
-      console.error("Error deleting note:", error);
-      toast.error("Failed to delete note");
+      console.error('Error deleting note:', error);
+      toast.error('Failed to delete note');
     }
   };
 
@@ -791,16 +982,16 @@ const CallTable = () => {
   const handleCancelEdit = () => {
     setEditingNote({
       index: null,
-      value: "",
-      originalValue: "",
-      timestamp: "",
+      value: '',
+      originalValue: '',
+      timestamp: '',
     });
   };
 
   // Save edited note
   const handleSaveEditedNote = async () => {
     if (!editingNote.value.trim()) {
-      toast.error("Note cannot be empty");
+      toast.error('Note cannot be empty');
       return;
     }
 
@@ -815,35 +1006,35 @@ const CallTable = () => {
         lines[editingNote.index] = editingNote.value.trim();
       }
 
-      const updatedNotes = lines.join("\n").trim();
+      const updatedNotes = lines.join('\n').trim();
 
       const response = await fetch(
         `/api/contact-detail/${noteModal.contactId}/note`,
         {
-          method: "POST",
+          method: 'POST',
           headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${localStorage.getItem("token")}`,
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${localStorage.getItem('token')}`,
           },
           body: JSON.stringify({ notes: updatedNotes }),
-        }
+        },
       );
 
       if (response.ok) {
         const data = await response.json();
         setNoteModal((prev) => ({
           ...prev,
-          currentNotes: data.contact.agent_notes || "",
+          currentNotes: data.contact.agent_notes || '',
         }));
         handleCancelEdit();
-        toast.success("Note updated successfully!");
+        toast.success('Note updated successfully!');
         await fetchContacts();
       } else {
-        toast.error("Failed to update note");
+        toast.error('Failed to update note');
       }
     } catch (error) {
-      console.error("Error updating note:", error);
-      toast.error("Failed to update note");
+      console.error('Error updating note:', error);
+      toast.error('Failed to update note');
     }
   };
 
@@ -855,8 +1046,8 @@ const CallTable = () => {
       isOpen: true,
       contactId: latestContact.id,
       contactName: latestContact.name,
-      currentNotes: latestContact.agent_notes || "",
-      newNote: "",
+      currentNotes: latestContact.agent_notes || '',
+      newNote: '',
     });
   };
 
@@ -864,16 +1055,16 @@ const CallTable = () => {
     setNoteModal({
       isOpen: false,
       contactId: null,
-      contactName: "",
-      currentNotes: "",
-      newNote: "",
+      contactName: '',
+      currentNotes: '',
+      newNote: '',
     });
     handleCancelEdit();
   };
 
   const handleSaveNote = async () => {
     if (!noteModal.newNote.trim()) {
-      toast.error("Please enter a note");
+      toast.error('Please enter a note');
       return;
     }
 
@@ -881,13 +1072,13 @@ const CallTable = () => {
       const response = await fetch(
         `/api/contacts/${noteModal.contactId}/note`,
         {
-          method: "POST",
+          method: 'POST',
           headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${localStorage.getItem("token")}`,
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${localStorage.getItem('token')}`,
           },
           body: JSON.stringify({ note: noteModal.newNote.trim() }),
-        }
+        },
       );
 
       const data = await response.json();
@@ -898,18 +1089,18 @@ const CallTable = () => {
           prevContacts.map((contact) =>
             contact.id === noteModal.contactId
               ? { ...contact, agent_notes: data.contact.agent_notes }
-              : contact
-          )
+              : contact,
+          ),
         );
 
         // Update note modal to show the saved note immediately
         setNoteModal((prev) => ({
           ...prev,
-          currentNotes: data.contact.agent_notes || "",
-          newNote: "", // Clear the new note input
+          currentNotes: data.contact.agent_notes || '',
+          newNote: '', // Clear the new note input
         }));
 
-        toast.success("Note saved successfully!");
+        toast.success('Note saved successfully!');
 
         // Force-refresh contacts from server to guarantee persistence
         try {
@@ -921,72 +1112,86 @@ const CallTable = () => {
         // Don't close modal - keep it open so user can see the saved note
         // closeNoteModal();
       } else {
-        toast.error(data.error || "Failed to save note");
+        toast.error(data.error || 'Failed to save note');
       }
     } catch (error) {
-      console.error("Error saving note:", error);
-      toast.error("Failed to save note");
+      console.error('Error saving note:', error);
+      toast.error('Failed to save note');
     }
   };
 
   // Get status badge component
   const getStatusBadge = (status, contactId) => {
+    // If a manual override exists for this row, prefer it
+    const effectiveStatus = statusOverrideById[contactId] || status;
     const statusConfig = {
       Completed: {
         icon: CheckCircle,
-        color: "bg-green-100 text-green-800 border-green-200",
-        iconColor: "text-green-600",
-        label: "Completed",
+        color: 'bg-green-100 text-green-800 border-green-200',
+        iconColor: 'text-green-600',
+        label: 'Completed',
       },
-      "In Progress": {
+      'In Progress': {
         icon: callingContacts.has(contactId) ? Loader : Clock,
         color: callingContacts.has(contactId)
-          ? "bg-blue-100 text-blue-800 border-blue-200"
-          : "bg-yellow-100 text-yellow-800 border-yellow-200",
+          ? 'bg-blue-100 text-blue-800 border-blue-200'
+          : 'bg-yellow-100 text-yellow-800 border-yellow-200',
         iconColor: callingContacts.has(contactId)
-          ? "text-blue-600"
-          : "text-yellow-600",
-        label: callingContacts.has(contactId) ? "Calling..." : "In Progress",
+          ? 'text-blue-600'
+          : 'text-yellow-600',
+        label: callingContacts.has(contactId) ? 'Calling...' : 'In Progress',
       },
       Busy: {
         icon: Phone,
-        color: "bg-orange-100 text-orange-800 border-orange-200",
-        iconColor: "text-orange-600",
-        label: "Busy",
+        color: 'bg-orange-100 text-orange-800 border-orange-200',
+        iconColor: 'text-orange-600',
+        label: 'Busy',
       },
-      "No Answer": {
+      'No Answer': {
         icon: AlertCircle,
-        color: "bg-yellow-100 text-yellow-800 border-yellow-200",
-        iconColor: "text-yellow-600",
-        label: "No Answer",
+        color: 'bg-yellow-100 text-yellow-800 border-yellow-200',
+        iconColor: 'text-yellow-600',
+        label: 'No Answer',
       },
-      "Switched Off": {
+      'Switched Off': {
         icon: XCircle,
-        color: "bg-gray-100 text-gray-800 border-gray-200",
-        iconColor: "text-gray-600",
-        label: "Switched Off",
+        color: 'bg-red-100 text-red-800 border-red-200',
+        iconColor: 'text-red-600',
+        label: 'Switched Off',
       },
       Cancelled: {
         icon: XCircle,
-        color: "bg-red-100 text-red-800 border-red-200",
-        iconColor: "text-red-600",
-        label: "Cancelled",
+        color: 'bg-red-100 text-red-800 border-red-200',
+        iconColor: 'text-red-600',
+        label: 'Cancelled',
       },
       Failed: {
         icon: XCircle,
-        color: "bg-red-100 text-red-800 border-red-200",
-        iconColor: "text-red-600",
-        label: "Failed",
+        color: 'bg-red-100 text-red-800 border-red-200',
+        iconColor: 'text-red-600',
+        label: 'Failed',
       },
-      "Not Called": {
+      Ringing: {
+        icon: Clock,
+        color: 'bg-blue-100 text-blue-800 border-blue-200',
+        iconColor: 'text-blue-600',
+        label: 'Ringing',
+      },
+      'Not Connect': {
         icon: AlertCircle,
-        color: "bg-gray-100 text-gray-800 border-gray-200",
-        iconColor: "text-gray-600",
-        label: "Not Called",
+        color: 'bg-red-100 text-red-800 border-red-200',
+        iconColor: 'text-red-600',
+        label: 'Not Connect',
+      },
+      'Not Called': {
+        icon: AlertCircle,
+        color: 'bg-gray-100 text-gray-800 border-gray-200',
+        iconColor: 'text-gray-600',
+        label: 'Not Called',
       },
     };
 
-    const config = statusConfig[status] || statusConfig["Not Called"];
+    const config = statusConfig[effectiveStatus] || statusConfig['Not Called'];
     const Icon = config.icon;
 
     return (
@@ -995,7 +1200,7 @@ const CallTable = () => {
       >
         <Icon
           className={`w-3 h-3 ${config.iconColor} ${
-            callingContacts.has(contactId) ? "animate-spin" : ""
+            callingContacts.has(contactId) ? 'animate-spin' : ''
           }`}
         />
         {config.label}
@@ -1008,19 +1213,19 @@ const CallTable = () => {
     // Use schedule_time if available, otherwise use last_attempt, then createdAt
     const timeToFormat = scheduleTime || lastAttempt || createdAt;
 
-    if (!timeToFormat) return "Not scheduled";
+    if (!timeToFormat) return 'Not scheduled';
 
     try {
       const date = new Date(timeToFormat);
-      return date.toLocaleString("en-US", {
-        month: "short",
-        day: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
+      return date.toLocaleString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
         hour12: true,
       });
     } catch (error) {
-      return "Invalid date";
+      return 'Invalid date';
     }
   };
 
@@ -1033,7 +1238,7 @@ const CallTable = () => {
       const now = new Date();
       const diffInMinutes = Math.floor((now - date) / (1000 * 60));
 
-      if (diffInMinutes < 1) return "Just now";
+      if (diffInMinutes < 1) return 'Just now';
       if (diffInMinutes < 60) return `${diffInMinutes}m ago`;
       if (diffInMinutes < 1440) return `${Math.floor(diffInMinutes / 60)}h ago`;
       return date.toLocaleDateString();
@@ -1044,10 +1249,10 @@ const CallTable = () => {
 
   // Format duration helper
   const formatDuration = (seconds) => {
-    if (!seconds || seconds === 0) return "0:00";
+    if (!seconds || seconds === 0) return '0:00';
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
-    return `${mins}:${secs.toString().padStart(2, "0")}`;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
   // Check if call button should be disabled
@@ -1082,22 +1287,23 @@ const CallTable = () => {
               Call Management
             </h3>
             <p className="text-sm text-gray-600">
-              Live contact status and calling interface •{" "}
+              Live contact status and calling interface •{' '}
               {filteredContacts.length} contacts
-              {(dateFilter || storeFilter !== "all") &&
+              {(dateFilter || storeFilter !== 'all') &&
                 ` (filtered from ${contacts.length} total)`}
             </p>
           </div>
         </div>
       </div>
 
-      {/* Date Filter Section */}
-      <div className="px-6 py-4 border-b border-gray-200 bg-gray-50">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
+      {/* Filter Section */}
+      <div className="px-6 py-4 border-b border-gray-200 bg-gray-50 relative z-10">
+        <div className="flex items-center justify-between gap-6 flex-wrap">
+          {/* Left Section: Date Filters */}
+          <div className="flex items-center gap-4 flex-wrap">
             <div className="flex items-center gap-2">
               <Filter className="w-4 h-4 text-gray-500" />
-              <span className="text-sm font-medium text-gray-700">
+              <span className="text-sm font-medium text-gray-700 whitespace-nowrap">
                 Filter by Date:
               </span>
             </div>
@@ -1105,31 +1311,31 @@ const CallTable = () => {
             {/* Date Range Buttons */}
             <div className="flex items-center gap-2">
               <button
-                onClick={() => handleDateRangeChange("all")}
-                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
-                  dateRange === "all"
-                    ? "bg-blue-600 text-white"
-                    : "bg-white text-gray-700 border border-gray-300 hover:bg-gray-50"
+                onClick={() => handleDateRangeChange('all')}
+                className={`px-3 py-2 text-sm font-medium rounded-md transition-all duration-200 ${
+                  dateRange === 'all'
+                    ? 'bg-blue-600 text-white shadow-sm'
+                    : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50 hover:border-gray-400'
                 }`}
               >
                 All
               </button>
               <button
-                onClick={() => handleDateRangeChange("today")}
-                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
-                  dateRange === "today"
-                    ? "bg-blue-600 text-white"
-                    : "bg-white text-gray-700 border border-gray-300 hover:bg-gray-50"
+                onClick={() => handleDateRangeChange('today')}
+                className={`px-3 py-2 text-sm font-medium rounded-md transition-all duration-200 ${
+                  dateRange === 'today'
+                    ? 'bg-blue-600 text-white shadow-sm'
+                    : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50 hover:border-gray-400'
                 }`}
               >
                 Today
               </button>
               <button
-                onClick={() => handleDateRangeChange("yesterday")}
-                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
-                  dateRange === "yesterday"
-                    ? "bg-blue-600 text-white"
-                    : "bg-white text-gray-700 border border-gray-300 hover:bg-gray-50"
+                onClick={() => handleDateRangeChange('yesterday')}
+                className={`px-3 py-2 text-sm font-medium rounded-md transition-all duration-200 ${
+                  dateRange === 'yesterday'
+                    ? 'bg-blue-600 text-white shadow-sm'
+                    : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50 hover:border-gray-400'
                 }`}
               >
                 Yesterday
@@ -1140,7 +1346,7 @@ const CallTable = () => {
             <div className="relative" data-date-picker>
               <button
                 onClick={() => setShowDatePicker(!showDatePicker)}
-                className="inline-flex items-center gap-2 px-3 py-1.5 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1"
+                className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1 transition-all duration-200"
               >
                 <Calendar className="w-4 h-4" />
                 Select Date
@@ -1149,28 +1355,28 @@ const CallTable = () => {
               {showDatePicker && (
                 <div
                   style={{
-                    position: "absolute",
-                    top: "100%",
+                    position: 'absolute',
+                    top: '100%',
                     left: 0,
                     right: 0,
                     zIndex: 50,
-                    backgroundColor: "white",
-                    border: "1px solid #d1d5db",
-                    borderRadius: "8px",
+                    backgroundColor: 'white',
+                    border: '1px solid #d1d5db',
+                    borderRadius: '8px',
                     boxShadow:
-                      "0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)",
-                    minWidth: "320px",
+                      '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)',
+                    minWidth: '320px',
                   }}
                   data-date-picker
                 >
-                  <div style={{ padding: "16px" }}>
+                  <div style={{ padding: '16px' }}>
                     {/* Calendar Header */}
                     <div
                       style={{
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "space-between",
-                        marginBottom: "16px",
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        marginBottom: '16px',
                       }}
                     >
                       <button
@@ -1180,34 +1386,34 @@ const CallTable = () => {
                           setCurrentMonth(newDate);
                         }}
                         style={{
-                          background: "none",
-                          border: "none",
-                          cursor: "pointer",
-                          padding: "4px",
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
+                          background: 'none',
+                          border: 'none',
+                          cursor: 'pointer',
+                          padding: '4px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
                         }}
                       >
                         <ChevronLeft
                           className="w-4 h-4"
-                          style={{ color: "#4b5563" }}
+                          style={{ color: '#4b5563' }}
                         />
                       </button>
-                      <div style={{ textAlign: "center" }}>
+                      <div style={{ textAlign: 'center' }}>
                         <h3
                           style={{
-                            fontSize: "16px",
-                            fontWeight: "600",
-                            color: "#111827",
+                            fontSize: '16px',
+                            fontWeight: '600',
+                            color: '#111827',
                           }}
                         >
-                          {currentMonth.toLocaleDateString("en-US", {
-                            month: "long",
-                            year: "numeric",
+                          {currentMonth.toLocaleDateString('en-US', {
+                            month: 'long',
+                            year: 'numeric',
                           })}
                         </h3>
-                        <p style={{ fontSize: "12px", color: "#6b7280" }}>
+                        <p style={{ fontSize: '12px', color: '#6b7280' }}>
                           Indian Standard Time (IST)
                         </p>
                       </div>
@@ -1218,18 +1424,18 @@ const CallTable = () => {
                           setCurrentMonth(newDate);
                         }}
                         style={{
-                          background: "none",
-                          border: "none",
-                          cursor: "pointer",
-                          padding: "4px",
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
+                          background: 'none',
+                          border: 'none',
+                          cursor: 'pointer',
+                          padding: '4px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
                         }}
                       >
                         <ChevronRight
                           className="w-4 h-4"
-                          style={{ color: "#4b5563" }}
+                          style={{ color: '#4b5563' }}
                         />
                       </button>
                     </div>
@@ -1237,29 +1443,29 @@ const CallTable = () => {
                     {/* Calendar Days */}
                     <div
                       style={{
-                        display: "grid",
-                        gridTemplateColumns: "repeat(7, 1fr)",
-                        gap: "4px",
-                        marginBottom: "16px",
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(7, 1fr)',
+                        gap: '4px',
+                        marginBottom: '16px',
                       }}
                     >
                       {/* Day Headers */}
-                      {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map(
+                      {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(
                         (day) => (
                           <div
                             key={day}
                             style={{
-                              padding: "8px 4px",
-                              textAlign: "center",
-                              fontSize: "12px",
-                              fontWeight: "500",
-                              color: "#6b7280",
-                              backgroundColor: "#f9fafb",
+                              padding: '8px 4px',
+                              textAlign: 'center',
+                              fontSize: '12px',
+                              fontWeight: '500',
+                              color: '#6b7280',
+                              backgroundColor: '#f9fafb',
                             }}
                           >
                             {day}
                           </div>
-                        )
+                        ),
                       )}
 
                       {/* Calendar Days */}
@@ -1284,49 +1490,49 @@ const CallTable = () => {
                             }}
                             disabled={isFuture || !isCurrentMonth}
                             style={{
-                              padding: "8px 4px",
-                              border: "none",
+                              padding: '8px 4px',
+                              border: 'none',
                               backgroundColor: isSelected
-                                ? "#3b82f6"
+                                ? '#3b82f6'
                                 : isToday
-                                ? "#eff6ff"
+                                ? '#eff6ff'
                                 : dayData.hasContacts
-                                ? "#f0fdf4"
+                                ? '#f0fdf4'
                                 : isFuture
-                                ? "#f9fafb"
-                                : "transparent",
+                                ? '#f9fafb'
+                                : 'transparent',
                               color: isSelected
-                                ? "white"
+                                ? 'white'
                                 : isFuture
-                                ? "#d1d5db"
+                                ? '#d1d5db'
                                 : isCurrentMonth
-                                ? "#111827"
-                                : "#9ca3af",
-                              cursor: isFuture ? "not-allowed" : "pointer",
-                              borderRadius: "4px",
-                              fontSize: "14px",
-                              fontWeight: isToday ? "600" : "400",
-                              position: "relative",
-                              minHeight: "32px",
-                              display: "flex",
-                              alignItems: "center",
-                              justifyContent: "center",
+                                ? '#111827'
+                                : '#9ca3af',
+                              cursor: isFuture ? 'not-allowed' : 'pointer',
+                              borderRadius: '4px',
+                              fontSize: '14px',
+                              fontWeight: isToday ? '600' : '400',
+                              position: 'relative',
+                              minHeight: '32px',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
                               opacity: isFuture ? 0.5 : 1,
                             }}
                             onMouseEnter={(e) => {
                               if (!isSelected && !isFuture) {
                                 e.target.style.backgroundColor = isCurrentMonth
-                                  ? "#f3f4f6"
-                                  : "#f9fafb";
+                                  ? '#f3f4f6'
+                                  : '#f9fafb';
                               }
                             }}
                             onMouseLeave={(e) => {
                               if (!isSelected && !isFuture) {
                                 e.target.style.backgroundColor = isToday
-                                  ? "#eff6ff"
+                                  ? '#eff6ff'
                                   : dayData.hasContacts
-                                  ? "#f0fdf4"
-                                  : "transparent";
+                                  ? '#f0fdf4'
+                                  : 'transparent';
                               }
                             }}
                           >
@@ -1334,14 +1540,14 @@ const CallTable = () => {
                             {!isSelected && !isFuture && isCurrentMonth && (
                               <div
                                 style={{
-                                  position: "absolute",
-                                  bottom: "2px",
-                                  width: "4px",
-                                  height: "4px",
+                                  position: 'absolute',
+                                  bottom: '2px',
+                                  width: '4px',
+                                  height: '4px',
                                   backgroundColor: dayData.hasContacts
-                                    ? "#10b981" // green dot when data present
-                                    : "#ef4444", // red dot when no data
-                                  borderRadius: "50%",
+                                    ? '#10b981' // green dot when data present
+                                    : '#ef4444', // red dot when no data
+                                  borderRadius: '50%',
                                 }}
                               />
                             )}
@@ -1353,11 +1559,11 @@ const CallTable = () => {
                     {/* Calendar Footer */}
                     <div
                       style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "center",
-                        paddingTop: "12px",
-                        borderTop: "1px solid #e5e7eb",
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        paddingTop: '12px',
+                        borderTop: '1px solid #e5e7eb',
                       }}
                     >
                       <button
@@ -1366,21 +1572,21 @@ const CallTable = () => {
                           handleCustomDateChange(today);
                         }}
                         style={{
-                          padding: "6px 12px",
-                          fontSize: "12px",
-                          fontWeight: "500",
-                          borderRadius: "6px",
-                          border: "1px solid #d1d5db",
-                          backgroundColor: "#f9fafb",
-                          color: "#374151",
-                          cursor: "pointer",
-                          transition: "all 0.2s",
+                          padding: '6px 12px',
+                          fontSize: '12px',
+                          fontWeight: '500',
+                          borderRadius: '6px',
+                          border: '1px solid #d1d5db',
+                          backgroundColor: '#f9fafb',
+                          color: '#374151',
+                          cursor: 'pointer',
+                          transition: 'all 0.2s',
                         }}
                         onMouseEnter={(e) => {
-                          e.target.style.backgroundColor = "#f3f4f6";
+                          e.target.style.backgroundColor = '#f3f4f6';
                         }}
                         onMouseLeave={(e) => {
-                          e.target.style.backgroundColor = "#f9fafb";
+                          e.target.style.backgroundColor = '#f9fafb';
                         }}
                       >
                         Today (IST)
@@ -1388,21 +1594,21 @@ const CallTable = () => {
                       <button
                         onClick={clearDateFilter}
                         style={{
-                          padding: "6px 12px",
-                          fontSize: "12px",
-                          fontWeight: "500",
-                          borderRadius: "6px",
-                          border: "1px solid #dc2626",
-                          backgroundColor: "#dc2626",
-                          color: "white",
-                          cursor: "pointer",
-                          transition: "all 0.2s",
+                          padding: '6px 12px',
+                          fontSize: '12px',
+                          fontWeight: '500',
+                          borderRadius: '6px',
+                          border: '1px solid #dc2626',
+                          backgroundColor: '#dc2626',
+                          color: 'white',
+                          cursor: 'pointer',
+                          transition: 'all 0.2s',
                         }}
                         onMouseEnter={(e) => {
-                          e.target.style.backgroundColor = "#b91c1c";
+                          e.target.style.backgroundColor = '#b91c1c';
                         }}
                         onMouseLeave={(e) => {
-                          e.target.style.backgroundColor = "#dc2626";
+                          e.target.style.backgroundColor = '#dc2626';
                         }}
                       >
                         Clear
@@ -1414,63 +1620,140 @@ const CallTable = () => {
             </div>
           </div>
 
-          {/* Active Filter Display */}
-          {dateFilter && (
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-gray-600">
-                Showing contacts from:{" "}
-                {new Date(dateFilter).toLocaleDateString()}
-              </span>
-              <button
-                onClick={clearDateFilter}
-                className="inline-flex items-center gap-1 px-2 py-1 text-xs text-gray-600 hover:text-gray-800"
-              >
-                <X className="w-3 h-3" />
-                Clear
-              </button>
-            </div>
-          )}
+          {/* Right Section: Store and Status Filters */}
+          <div className="flex items-center gap-4 flex-wrap">
+            {/* Store Filter */}
+            {uniqueStores.length > 0 && (
+              <div className="flex items-center gap-2 relative z-10">
+                <label className="text-sm font-medium text-gray-700 whitespace-nowrap">
+                  Store:
+                </label>
+                <div className="relative">
+                  <select
+                    value={storeFilter}
+                    onChange={(e) => setStoreFilter(e.target.value)}
+                    className="appearance-none px-3 py-2 pr-8 text-sm border border-gray-300 rounded-md bg-white text-gray-700 hover:bg-gray-50 hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1 focus:border-blue-500 transition-all duration-200 min-w-[140px] cursor-pointer"
+                  >
+                    <option value="all">All Stores</option>
+                    {uniqueStores.map((store) => (
+                      <option key={store} value={store}>
+                        {store}
+                      </option>
+                    ))}
+                  </select>
+                  <div className="absolute inset-y-0 right-0 flex items-center pr-2 pointer-events-none">
+                    <svg
+                      className="w-4 h-4 text-gray-400"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M19 9l-7 7-7-7"
+                      />
+                    </svg>
+                  </div>
+                </div>
+                {storeFilter !== 'all' && (
+                  <button
+                    onClick={() => setStoreFilter('all')}
+                    className="inline-flex items-center gap-1 px-2 py-2 text-xs text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-md transition-colors"
+                    title="Clear store filter"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+            )}
 
-          {/* Store Filter */}
-          {uniqueStores.length > 0 && (
-            <div className="flex items-center gap-2">
-              <label className="text-sm font-medium text-gray-700">
-                Store:
+            {/* Status Filter */}
+            <div className="flex items-center gap-2 relative z-10">
+              <label className="text-sm font-medium text-gray-700 whitespace-nowrap">
+                Status:
               </label>
-              <select
-                value={storeFilter}
-                onChange={(e) => setStoreFilter(e.target.value)}
-                className="px-3 py-1.5 text-sm border border-gray-300 rounded-md bg-white text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1"
-              >
-                <option value="all">All Stores</option>
-                {uniqueStores.map((store) => (
-                  <option key={store} value={store}>
-                    {store}
-                  </option>
-                ))}
-              </select>
-              {storeFilter !== "all" && (
-                <button
-                  onClick={() => setStoreFilter("all")}
-                  className="inline-flex items-center gap-1 px-2 py-1 text-xs text-gray-600 hover:text-gray-800"
+              <div className="relative">
+                <select
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value)}
+                  className="appearance-none px-3 py-2 pr-8 text-sm border border-gray-300 rounded-md bg-white text-gray-700 hover:bg-gray-50 hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1 focus:border-blue-500 transition-all duration-200 min-w-[140px] cursor-pointer"
                 >
-                  <X className="w-3 h-3" />
-                  Clear
+                  <option value="all">All</option>
+                  <option value="completed">Completed</option>
+                  <option value="failed">Failed</option>
+                  <option value="busy">Busy</option>
+                  <option value="no answer">No Answer</option>
+                  <option value="switched off">Switched Off</option>
+                  <option value="cancelled">Cancelled</option>
+                  <option value="ringing">Ringing</option>
+                  <option value="not connect">Not Connect</option>
+                  <option value="in progress">In Progress</option>
+                  <option value="not called">Not Called</option>
+                </select>
+                <div className="absolute inset-y-0 right-0 flex items-center pr-2 pointer-events-none">
+                  <svg
+                    className="w-4 h-4 text-gray-400"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M19 9l-7 7-7-7"
+                    />
+                  </svg>
+                </div>
+              </div>
+              {statusFilter !== 'all' && (
+                <button
+                  onClick={() => setStatusFilter('all')}
+                  className="inline-flex items-center gap-1 px-2 py-2 text-xs text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-md transition-colors"
+                  title="Clear status filter"
+                >
+                  <X className="w-3.5 h-3.5" />
                 </button>
               )}
             </div>
-          )}
+          </div>
         </div>
+
+        {/* Active Filter Display */}
+        {dateFilter && (
+          <div className="flex items-center gap-2 mt-3 pt-3 border-t border-gray-200">
+            <span className="text-sm text-gray-600">
+              Showing contacts from:{' '}
+              <span className="font-medium text-gray-900">
+                {new Date(dateFilter).toLocaleDateString('en-US', {
+                  weekday: 'short',
+                  year: 'numeric',
+                  month: 'short',
+                  day: 'numeric',
+                })}
+              </span>
+            </span>
+            <button
+              onClick={clearDateFilter}
+              className="inline-flex items-center gap-1 px-2 py-1 text-xs text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-md transition-colors"
+            >
+              <X className="w-3.5 h-3.5" />
+              Clear
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Table */}
       {filteredContacts.length === 0 ? (
         <EmptyStates.NoContacts />
       ) : (
-        <div className="overflow-x-auto border border-gray-200 rounded-lg">
+        <div className="overflow-x-auto border border-gray-200 rounded-lg relative z-0">
           <table
             className="w-full table-fixed divide-y divide-gray-200"
-            style={{ tableLayout: "fixed" }}
+            style={{ tableLayout: 'fixed' }}
           >
             <thead className="bg-gray-50">
               <tr>
@@ -1498,6 +1781,12 @@ const CallTable = () => {
                 <th className="w-20 px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider hidden md:table-cell">
                   Attempts
                 </th>
+                <th className="w-36 px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Override
+                </th>
+                <th className="w-32 px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Remark
+                </th>
                 <th className="w-40 px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Action
                 </th>
@@ -1508,7 +1797,7 @@ const CallTable = () => {
                 <tr
                   key={contact.id}
                   className="hover:bg-gray-50 transition-colors duration-150"
-                  style={{ height: "auto" }}
+                  style={{ height: 'auto' }}
                 >
                   {/* Name */}
                   <td className="w-48 px-4 py-4">
@@ -1516,13 +1805,13 @@ const CallTable = () => {
                       <div className="flex-shrink-0 h-8 w-8">
                         <div className="h-8 w-8 rounded-full bg-blue-100 flex items-center justify-center">
                           <span className="text-sm font-medium text-blue-600">
-                            {contact.name?.charAt(0)?.toUpperCase() || "?"}
+                            {contact.name?.charAt(0)?.toUpperCase() || '?'}
                           </span>
                         </div>
                       </div>
                       <div className="ml-3 min-w-0 flex-1">
                         <div className="text-sm font-medium text-gray-900 truncate">
-                          {contact.name || "Unknown"}
+                          {contact.name || 'Unknown'}
                         </div>
                       </div>
                     </div>
@@ -1531,7 +1820,7 @@ const CallTable = () => {
                   {/* Phone */}
                   <td className="w-44 pl-4 pr-1 py-4">
                     <div className="text-sm text-gray-900 font-mono">
-                      {contact.phone || "N/A"}
+                      {contact.phone || 'N/A'}
                     </div>
                   </td>
 
@@ -1580,7 +1869,7 @@ const CallTable = () => {
                       {formatScheduleTime(
                         contact.schedule_time,
                         contact.last_attempt,
-                        contact.createdAt
+                        contact.createdAt,
                       )}
                     </div>
                   </td>
@@ -1599,6 +1888,408 @@ const CallTable = () => {
                     </span>
                   </td>
 
+                  {/* Override dropdown (custom menu) */}
+                  <td className="w-36 px-4 py-4 text-center">
+                    <div className="relative inline-block text-left">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          const rect = e.currentTarget.getBoundingClientRect();
+                          // Place menu below button; clamp to viewport with 8px margin
+                          const top = Math.min(
+                            window.innerHeight - 16,
+                            rect.bottom + 8,
+                          );
+                          const left = Math.min(
+                            window.innerWidth - 16,
+                            Math.max(8, rect.left + rect.width / 2),
+                          );
+                          setOverrideMenuPos({ top, left });
+                          setPendingOverrideById((prev) => ({
+                            ...prev,
+                            [contact.id]: statusOverrideById[contact.id] || '',
+                          }));
+                          setOpenOverrideId((prev) =>
+                            prev === contact.id ? null : contact.id,
+                          );
+                        }}
+                        className="inline-flex items-center gap-2 w-full max-w-[150px] justify-center rounded-md border border-gray-300 bg-white px-2 py-1 text-xs font-medium text-gray-700 shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1"
+                        title="Override status"
+                      >
+                        <span
+                          className={`inline-block w-2 h-2 rounded-full ${
+                            {
+                              'Switched Off': 'bg-red-500',
+                              'Not Connect': 'bg-red-500',
+                              Busy: 'bg-orange-500',
+                              Ringing: 'bg-blue-500',
+                              Failed: 'bg-red-500',
+                            }[statusOverrideById[contact.id] || ''] ||
+                            'bg-gray-300'
+                          }`}
+                        />
+                        <span className="truncate">
+                          {statusOverrideById[contact.id] || 'API Status'}
+                        </span>
+                        <svg
+                          className="h-3 w-3 text-gray-500"
+                          xmlns="http://www.w3.org/2000/svg"
+                          viewBox="0 0 20 20"
+                          fill="currentColor"
+                          aria-hidden="true"
+                        >
+                          <path
+                            fillRule="evenodd"
+                            d="M5.23 7.21a.75.75 0 011.06.02L10 10.94l3.71-3.71a.75.75 0 111.06 1.06l-4.24 4.24a.75.75 0 01-1.06 0L5.25 8.29a.75.75 0 01-.02-1.08z"
+                            clipRule="evenodd"
+                          />
+                        </svg>
+                      </button>
+                      {openOverrideId === contact.id && (
+                        <div
+                          className="fixed min-w-[176px] w-max origin-top rounded-md bg-white shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none z-50"
+                          style={{
+                            top: overrideMenuPos.top,
+                            left: overrideMenuPos.left,
+                            transform: 'translateX(-50%)',
+                            maxHeight: `calc(100vh - ${
+                              overrideMenuPos.top + 8
+                            }px)`,
+                            overflow: 'auto',
+                          }}
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <div className="py-1">
+                            {overrideOptions.map((opt) => {
+                              const OptIcon = opt.icon;
+                              const isActive =
+                                (pendingOverrideById[contact.id] || '') ===
+                                opt.value;
+                              return (
+                                <button
+                                  key={opt.value || 'api'}
+                                  onClick={() => {
+                                    setPendingOverrideById((prev) => ({
+                                      ...prev,
+                                      [contact.id]: opt.value || '',
+                                    }));
+                                  }}
+                                  className={`w-full px-3 py-2 text-left text-xs flex items-center gap-2 hover:bg-gray-50 ${
+                                    isActive ? 'bg-gray-100' : ''
+                                  }`}
+                                >
+                                  <span
+                                    className={`inline-block w-2 h-2 rounded-full ${opt.color}`}
+                                  />
+                                  <OptIcon className="w-3 h-3 text-gray-500" />
+                                  <span className="flex-1 truncate">
+                                    {opt.label}
+                                  </span>
+                                  {isActive && (
+                                    <CheckCircle className="w-3 h-3 text-green-500" />
+                                  )}
+                                </button>
+                              );
+                            })}
+                            <div className="px-3 py-2 flex items-center justify-end gap-2 border-t border-gray-100 sticky bottom-0 bg-white">
+                              <button
+                                onClick={() => {
+                                  setPendingOverrideById((prev) => ({
+                                    ...prev,
+                                    [contact.id]:
+                                      statusOverrideById[contact.id] || '',
+                                  }));
+                                }}
+                                className="px-2 py-1 text-xs rounded-md border border-gray-300 text-gray-700 bg-white hover:bg-gray-50"
+                              >
+                                Reset
+                              </button>
+                              <button
+                                onClick={async () => {
+                                  const val =
+                                    pendingOverrideById[contact.id] || '';
+                                  const overrideMap = {
+                                    ...statusOverrideById,
+                                    [contact.id]: val || undefined,
+                                  };
+                                  // Remove undefined entries
+                                  if (!val) {
+                                    delete overrideMap[contact.id];
+                                  }
+                                  setStatusOverrideById(overrideMap);
+                                  try {
+                                    localStorage.setItem(
+                                      'statusOverrides',
+                                      JSON.stringify(overrideMap),
+                                    );
+                                  } catch (_) {}
+                                  // Only persist to backend if there's an actual override value
+                                  // If val is empty, user wants to use API status, so don't update backend
+                                  if (val) {
+                                    try {
+                                      const response = await fetch(
+                                        `/api/contacts/${contact.id}/status-override`,
+                                        {
+                                          method: 'PUT',
+                                          headers: {
+                                            'Content-Type': 'application/json',
+                                            Authorization: `Bearer ${localStorage.getItem(
+                                              'token',
+                                            )}`,
+                                          },
+                                          body: JSON.stringify({
+                                            status: val,
+                                          }),
+                                        },
+                                      );
+                                      if (response.ok) {
+                                        toast.success(
+                                          'Status updated successfully',
+                                        );
+                                      } else {
+                                        const errorData = await response.json();
+                                        toast.error(
+                                          errorData.error ||
+                                            'Failed to update status',
+                                        );
+                                      }
+                                    } catch (error) {
+                                      console.error(
+                                        'Error updating status:',
+                                        error,
+                                      );
+                                      toast.error('Failed to update status');
+                                    }
+                                  } else {
+                                    // If clearing override, just show success
+                                    toast.success(
+                                      'Status updated successfully',
+                                    );
+                                  }
+                                  setOpenOverrideId(null);
+                                }}
+                                className="px-3 py-1 text-xs rounded-md bg-blue-600 text-white hover:bg-blue-700"
+                              >
+                                Apply
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </td>
+
+                  {/* Remark dropdown (custom menu) */}
+                  <td className="w-32 px-4 py-4 text-center">
+                    <div className="relative inline-block text-left">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          const rect = e.currentTarget.getBoundingClientRect();
+                          // Place menu below button; clamp to viewport with 8px margin
+                          const top = Math.min(
+                            window.innerHeight - 16,
+                            rect.bottom + 8,
+                          );
+                          const left = Math.min(
+                            window.innerWidth - 16,
+                            Math.max(8, rect.left + rect.width / 2),
+                          );
+                          setRemarkMenuPos({ top, left });
+                          setPendingRemarkById((prev) => ({
+                            ...prev,
+                            [contact.id]: contact.remark || '',
+                          }));
+                          setOpenRemarkId((prev) =>
+                            prev === contact.id ? null : contact.id,
+                          );
+                        }}
+                        className="inline-flex items-center gap-2 w-full max-w-[120px] justify-center rounded-md border border-gray-300 bg-white px-2 py-1 text-xs font-medium text-gray-700 shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1"
+                        title="Select remark"
+                      >
+                        <span
+                          className={`inline-block w-2 h-2 rounded-full ${
+                            contact.remark === 'accept'
+                              ? 'bg-green-500'
+                              : contact.remark === 'reject'
+                              ? 'bg-red-500'
+                              : 'bg-gray-300'
+                          }`}
+                        />
+                        <span className="truncate">
+                          {contact.remark === 'accept'
+                            ? 'Accept'
+                            : contact.remark === 'reject'
+                            ? 'Reject'
+                            : '-'}
+                        </span>
+                        <svg
+                          className="h-3 w-3 text-gray-500"
+                          xmlns="http://www.w3.org/2000/svg"
+                          viewBox="0 0 20 20"
+                          fill="currentColor"
+                          aria-hidden="true"
+                        >
+                          <path
+                            fillRule="evenodd"
+                            d="M5.23 7.21a.75.75 0 011.06.02L10 10.94l3.71-3.71a.75.75 0 111.06 1.06l-4.24 4.24a.75.75 0 01-1.06 0L5.25 8.29a.75.75 0 01-.02-1.08z"
+                            clipRule="evenodd"
+                          />
+                        </svg>
+                      </button>
+                      {openRemarkId === contact.id && (
+                        <div
+                          className="fixed min-w-[140px] w-max origin-top rounded-md bg-white shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none z-50"
+                          style={{
+                            top: remarkMenuPos.top,
+                            left: remarkMenuPos.left,
+                            transform: 'translateX(-50%)',
+                            maxHeight: `calc(100vh - ${
+                              remarkMenuPos.top + 8
+                            }px)`,
+                            overflow: 'auto',
+                          }}
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <div className="py-1">
+                            <button
+                              onClick={() => {
+                                setPendingRemarkById((prev) => ({
+                                  ...prev,
+                                  [contact.id]: '',
+                                }));
+                              }}
+                              className={`w-full px-3 py-2 text-left text-xs flex items-center gap-2 hover:bg-gray-50 ${
+                                (pendingRemarkById[contact.id] || '') === ''
+                                  ? 'bg-gray-100'
+                                  : ''
+                              }`}
+                            >
+                              <span className="inline-block w-2 h-2 rounded-full bg-gray-300" />
+                              <span className="flex-1 truncate">-</span>
+                              {(pendingRemarkById[contact.id] || '') === '' && (
+                                <CheckCircle className="w-3 h-3 text-green-500" />
+                              )}
+                            </button>
+                            <button
+                              onClick={() => {
+                                setPendingRemarkById((prev) => ({
+                                  ...prev,
+                                  [contact.id]: 'accept',
+                                }));
+                              }}
+                              className={`w-full px-3 py-2 text-left text-xs flex items-center gap-2 hover:bg-gray-50 ${
+                                (pendingRemarkById[contact.id] || '') ===
+                                'accept'
+                                  ? 'bg-gray-100'
+                                  : ''
+                              }`}
+                            >
+                              <span className="inline-block w-2 h-2 rounded-full bg-green-500" />
+                              <CheckCircle className="w-3 h-3 text-green-600" />
+                              <span className="flex-1 truncate">Accept</span>
+                              {(pendingRemarkById[contact.id] || '') ===
+                                'accept' && (
+                                <CheckCircle className="w-3 h-3 text-green-500" />
+                              )}
+                            </button>
+                            <button
+                              onClick={() => {
+                                setPendingRemarkById((prev) => ({
+                                  ...prev,
+                                  [contact.id]: 'reject',
+                                }));
+                              }}
+                              className={`w-full px-3 py-2 text-left text-xs flex items-center gap-2 hover:bg-gray-50 ${
+                                (pendingRemarkById[contact.id] || '') ===
+                                'reject'
+                                  ? 'bg-gray-100'
+                                  : ''
+                              }`}
+                            >
+                              <span className="inline-block w-2 h-2 rounded-full bg-red-500" />
+                              <XCircle className="w-3 h-3 text-red-600" />
+                              <span className="flex-1 truncate">Reject</span>
+                              {(pendingRemarkById[contact.id] || '') ===
+                                'reject' && (
+                                <CheckCircle className="w-3 h-3 text-green-500" />
+                              )}
+                            </button>
+                            <div className="px-3 py-2 flex items-center justify-end gap-2 border-t border-gray-100 sticky bottom-0 bg-white">
+                              <button
+                                onClick={() => {
+                                  setPendingRemarkById((prev) => ({
+                                    ...prev,
+                                    [contact.id]: contact.remark || '',
+                                  }));
+                                }}
+                                className="px-2 py-1 text-xs rounded-md border border-gray-300 text-gray-700 bg-white hover:bg-gray-50"
+                              >
+                                Reset
+                              </button>
+                              <button
+                                onClick={async () => {
+                                  const val =
+                                    pendingRemarkById[contact.id] || '';
+                                  try {
+                                    const response = await fetch(
+                                      `/api/contacts/${contact.id}/remark`,
+                                      {
+                                        method: 'PUT',
+                                        headers: {
+                                          'Content-Type': 'application/json',
+                                          Authorization: `Bearer ${localStorage.getItem(
+                                            'token',
+                                          )}`,
+                                        },
+                                        body: JSON.stringify({ remark: val }),
+                                      },
+                                    );
+
+                                    if (response.ok) {
+                                      const data = await response.json();
+                                      setContacts((prevContacts) =>
+                                        prevContacts.map((c) =>
+                                          c.id === contact.id
+                                            ? {
+                                                ...c,
+                                                remark: data.contact.remark,
+                                              }
+                                            : c,
+                                        ),
+                                      );
+                                      toast.success(
+                                        'Remark updated successfully',
+                                      );
+                                    } else {
+                                      const errorData = await response.json();
+                                      toast.error(
+                                        errorData.error ||
+                                          'Failed to update remark',
+                                      );
+                                    }
+                                  } catch (error) {
+                                    console.error(
+                                      'Error updating remark:',
+                                      error,
+                                    );
+                                    toast.error('Failed to update remark');
+                                  }
+                                  setOpenRemarkId(null);
+                                }}
+                                className="px-3 py-1 text-xs rounded-md bg-blue-600 text-white hover:bg-blue-700"
+                              >
+                                Apply
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </td>
+
                   {/* Action */}
                   <td className="w-40 px-4 py-4 text-center">
                     <div className="flex items-center justify-center gap-1.5 flex-wrap">
@@ -1608,8 +2299,8 @@ const CallTable = () => {
                         disabled={isCallDisabled(contact.id, contact.status)}
                         className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md focus:outline-none focus:ring-2 focus:ring-offset-1 transition-colors duration-150 ${
                           isCallDisabled(contact.id, contact.status)
-                            ? "bg-gray-100 text-gray-400 cursor-not-allowed"
-                            : "bg-green-600 text-white hover:bg-green-700 focus:ring-green-500"
+                            ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                            : 'bg-green-600 text-white hover:bg-green-700 focus:ring-green-500'
                         }`}
                       >
                         {callingContacts.has(contact.id) ? (
@@ -1619,8 +2310,8 @@ const CallTable = () => {
                         )}
                         <span className="hidden sm:inline">
                           {callingContacts.has(contact.id)
-                            ? "Calling..."
-                            : "Call"}
+                            ? 'Calling...'
+                            : 'Call'}
                         </span>
                       </button>
 
@@ -1666,16 +2357,16 @@ const CallTable = () => {
           <div className="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
             <div>
               <p className="text-sm text-gray-700">
-                Showing{" "}
+                Showing{' '}
                 <span className="font-medium">
                   {filteredContacts.length === 0 ? 0 : startIndex + 1}
-                </span>{" "}
-                to{" "}
+                </span>{' '}
+                to{' '}
                 <span className="font-medium">
                   {Math.min(endIndex, filteredContacts.length)}
-                </span>{" "}
-                of{" "}
-                <span className="font-medium">{filteredContacts.length}</span>{" "}
+                </span>{' '}
+                of{' '}
+                <span className="font-medium">{filteredContacts.length}</span>{' '}
                 results
               </p>
             </div>
@@ -1736,8 +2427,8 @@ const CallTable = () => {
                       onClick={() => setCurrentPage(pageNum)}
                       className={`relative inline-flex items-center px-4 py-2 text-sm font-medium border ${
                         currentPage === pageNum
-                          ? "z-10 bg-blue-50 border-blue-500 text-blue-600"
-                          : "bg-white border-gray-300 text-gray-500 hover:bg-gray-50"
+                          ? 'z-10 bg-blue-50 border-blue-500 text-blue-600'
+                          : 'bg-white border-gray-300 text-gray-500 hover:bg-gray-50'
                       }`}
                     >
                       {pageNum}
@@ -1831,7 +2522,7 @@ const CallTable = () => {
                   <div className="bg-gradient-to-br from-gray-50 to-gray-100 border border-gray-200 rounded-lg shadow-sm p-4 max-h-72 overflow-y-auto">
                     {formatNotesForDisplay(noteModal.currentNotes).map(
                       (item, index) => {
-                        if (item.type === "separator") {
+                        if (item.type === 'separator') {
                           return (
                             <hr
                               key={`sep-${index}`}
@@ -1839,7 +2530,7 @@ const CallTable = () => {
                             />
                           );
                         }
-                        if (item.type === "header") {
+                        if (item.type === 'header') {
                           return (
                             <h4
                               key={`header-${index}`}
@@ -1850,14 +2541,14 @@ const CallTable = () => {
                             </h4>
                           );
                         }
-                        if (item.type === "excel") {
+                        if (item.type === 'excel') {
                           return (
                             <div key={`excel-${index}`} className="mb-3">
                               <div className="text-xs font-semibold text-blue-700 mb-1">
                                 {item.label}
                               </div>
                               <div className="text-xs text-gray-700 bg-blue-50 border border-blue-200 rounded px-3 py-2">
-                                {item.content.split(",").map((part, i) => (
+                                {item.content.split(',').map((part, i) => (
                                   <div key={i} className="mb-1 last:mb-0">
                                     <span className="text-gray-600">
                                       {part.trim()}
@@ -1868,7 +2559,7 @@ const CallTable = () => {
                             </div>
                           );
                         }
-                        if (item.type === "note") {
+                        if (item.type === 'note') {
                           const isEditing =
                             editingNote.index === item.originalIndex;
                           return (
@@ -1894,9 +2585,9 @@ const CallTable = () => {
                                       className="flex-1 px-3 py-2 text-sm border border-blue-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                                       autoFocus
                                       onKeyDown={(e) => {
-                                        if (e.key === "Enter") {
+                                        if (e.key === 'Enter') {
                                           handleSaveEditedNote();
-                                        } else if (e.key === "Escape") {
+                                        } else if (e.key === 'Escape') {
                                           handleCancelEdit();
                                         }
                                       }}
@@ -1932,7 +2623,7 @@ const CallTable = () => {
                                         handleStartEditNote(
                                           item.originalIndex,
                                           item.timestamp,
-                                          item.content
+                                          item.content,
                                         )
                                       }
                                       className="p-1.5 text-blue-600 bg-blue-50 rounded-md hover:bg-blue-100 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors duration-150"
@@ -1955,7 +2646,7 @@ const CallTable = () => {
                             </div>
                           );
                         }
-                        if (item.type === "text") {
+                        if (item.type === 'text') {
                           return (
                             <div
                               key={`text-${index}`}
@@ -1966,7 +2657,7 @@ const CallTable = () => {
                           );
                         }
                         return null;
-                      }
+                      },
                     )}
                   </div>
                 </div>

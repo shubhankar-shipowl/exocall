@@ -2,14 +2,10 @@ const express = require('express');
 const cors = require('cors');
 require('dotenv').config();
 
-// Import database connection and models
+// Import database connection
 const { sequelize, testConnection } = require('./config/database');
-const Contact = require('./models/Contact');
-const CallLog = require('./models/CallLog');
-const Settings = require('./models/Settings');
-const User = require('./models/User');
 
-// Associations will be loaded when needed by the controllers
+// Models will be loaded after schema verification to ensure fresh definitions
 
 const app = express();
 const PORT = process.env.PORT || 8006;
@@ -146,6 +142,7 @@ const startServer = async () => {
     const hasAddress = columns.some((c) => c.Field === 'address');
     const hasStore = columns.some((c) => c.Field === 'store');
     const hasAgentNotes = columns.some((c) => c.Field === 'agent_notes');
+    const hasRemark = columns.some((c) => c.Field === 'remark');
 
     if (!hasProductName) {
       console.log('⚠️  Adding product_name column...');
@@ -187,9 +184,49 @@ const startServer = async () => {
       console.log('✅ Added agent_notes');
     }
 
+    if (!hasRemark) {
+      console.log('⚠️  Adding remark column...');
+      await sequelize.query(
+        'ALTER TABLE contacts ADD COLUMN remark VARCHAR(50) NULL',
+      );
+      console.log('✅ Added remark');
+    }
+
+    // Verify call_logs table schema
+    console.log('🔄 Verifying call_logs table schema...');
+    const [callLogsColumns] = await sequelize.query(
+      'SHOW COLUMNS FROM call_logs',
+    );
+    const hasCallLogRemark = callLogsColumns.some((c) => c.Field === 'remark');
+
+    if (!hasCallLogRemark) {
+      console.log('⚠️  Adding remark column to call_logs...');
+      await sequelize.query(
+        'ALTER TABLE call_logs ADD COLUMN remark VARCHAR(50) NULL',
+      );
+      console.log('✅ Added remark to call_logs');
+    }
+
     console.log('✅ Database schema verified');
 
-    // Load models and associations
+    // Force clear module cache for models to ensure fresh model definitions
+    const contactModelPath = require.resolve('./models/Contact');
+    if (require.cache[contactModelPath]) {
+      delete require.cache[contactModelPath];
+      console.log('🔄 Cleared Contact model cache');
+    }
+    const callLogModelPath = require.resolve('./models/CallLog');
+    if (require.cache[callLogModelPath]) {
+      delete require.cache[callLogModelPath];
+      console.log('🔄 Cleared CallLog model cache');
+    }
+    const associationsPath = require.resolve('./associations');
+    if (require.cache[associationsPath]) {
+      delete require.cache[associationsPath];
+      console.log('🔄 Cleared associations cache');
+    }
+
+    // Load models and associations (fresh from disk)
     require('./associations');
     console.log('✅ Database connection established.');
     console.log('⚠️  Schema sync disabled - manage schema manually');

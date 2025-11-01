@@ -1,15 +1,22 @@
-const express = require("express");
+const express = require('express');
 const router = express.Router();
 const {
   getCalls,
   createCall,
   getCallLogsByContact,
   deleteCallLog,
-} = require("../controllers/callController");
+  setCallLogRemark,
+} = require('../controllers/callController');
 
-router.get("/", getCalls);
-router.post("/", createCall);
-router.get("/contact/:contactId", getCallLogsByContact);
-router.delete("/:callLogId", deleteCallLog);
+const { authenticate } = require('../middleware/auth');
+
+// All routes require authentication
+router.use(authenticate);
+
+router.get('/', getCalls);
+router.post('/', createCall);
+router.get('/contact/:contactId', getCallLogsByContact);
+router.put('/:id/remark', setCallLogRemark);
+router.delete('/:callLogId', deleteCallLog);
 
 module.exports = router;

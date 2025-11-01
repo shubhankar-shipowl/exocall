@@ -1,6 +1,6 @@
-const Contact = require("../models/Contact");
-const CallLog = require("../models/CallLog");
-const { sequelize } = require("../config/database");
+const Contact = require('../models/Contact');
+const CallLog = require('../models/CallLog');
+const { sequelize } = require('../config/database');
 
 // Ensure fresh database connection for webhook
 const getFreshConnection = async () => {
@@ -8,7 +8,7 @@ const getFreshConnection = async () => {
     await sequelize.authenticate();
     return sequelize;
   } catch (error) {
-    console.error("Database connection error:", error);
+    console.error('Database connection error:', error);
     throw error;
   }
 };
@@ -44,7 +44,7 @@ const handleExotelWebhook = async (req, res) => {
     if (!CallSid || (!Status && !Outcome)) {
       return res.status(400).json({
         error:
-          "Missing required fields: CallSid and Status/Outcome are required",
+          'Missing required fields: CallSid and Status/Outcome are required',
         received: { CallSid, Status, Duration, RecordingUrl, Outcome },
       });
     }
@@ -62,10 +62,10 @@ const handleExotelWebhook = async (req, res) => {
 
         // Try direct SQL query as fallback
         try {
-          const { sequelize } = require("../config/database");
+          const { sequelize } = require('../config/database');
           const [results] = await sequelize.query(
-            "SELECT * FROM contacts WHERE id = ?",
-            { replacements: [contactId] }
+            'SELECT * FROM contacts WHERE id = ?',
+            { replacements: [contactId] },
           );
 
           if (results.length > 0) {
@@ -82,7 +82,7 @@ const handleExotelWebhook = async (req, res) => {
               last_attempt: results[0].last_attempt,
               update: async function (data) {
                 await sequelize.query(
-                  "UPDATE contacts SET status = ?, duration = ?, recording_url = ?, last_attempt = ?, attempts = ? WHERE id = ?",
+                  'UPDATE contacts SET status = ?, duration = ?, recording_url = ?, last_attempt = ?, attempts = ? WHERE id = ?',
                   {
                     replacements: [
                       data.status,
@@ -92,20 +92,20 @@ const handleExotelWebhook = async (req, res) => {
                       data.attempts,
                       this.id,
                     ],
-                  }
+                  },
                 );
               },
             };
           }
         } catch (sqlError) {
-          console.error("SQL query error:", sqlError.message);
+          console.error('SQL query error:', sqlError.message);
         }
       }
     }
 
     if (!contact) {
       return res.status(404).json({
-        error: "Contact not found",
+        error: 'Contact not found',
         callSid: CallSid,
         customField: CustomField,
       });
@@ -114,51 +114,95 @@ const handleExotelWebhook = async (req, res) => {
     // Map Exotel status/outcome to our contact status
     let contactStatus;
 
-    // Primary mapping - use Exotel's Status field as-is
+    // Helper: try to infer "Switched Off"/"Unreachable" cases from free-text fields
+    const rawTextFields = [
+      req.body.StatusMessage,
+      req.body.Message,
+      req.body.Error,
+      req.body.Reason,
+      req.body.DialCallStatus,
+    ]
+      .filter(Boolean)
+      .join(' ')
+      .toLowerCase();
+
+    const looksSwitchedOff = () => {
+      // If Exotel provides any hint text, use that first
+      if (
+        rawTextFields.includes('switch') ||
+        rawTextFields.includes('unreachable') ||
+        rawTextFields.includes('not reachable') ||
+        rawTextFields.includes('power off') ||
+        rawTextFields.includes('switched off')
+      ) {
+        return true;
+      }
+
+      // Otherwise use a conservative heuristic based on Legs/duration
+      try {
+        const legStatuses = Array.isArray(Legs) ? Legs : [];
+        const leg2 = legStatuses[1];
+        const durationIsZero = (ConversationDuration || Duration || 0) == 0;
+        const outbound = (Direction || '').toString().startsWith('outbound');
+        if (
+          outbound &&
+          durationIsZero &&
+          leg2 &&
+          typeof leg2.Status === 'string' &&
+          leg2.Status.toLowerCase() === 'failed'
+        ) {
+          return true;
+        }
+      } catch (_) {}
+      return false;
+    };
+
+    // Primary mapping - use Exotel's Status field as-is where possible,
+    // but split "failed" into more descriptive buckets when we have signal.
     if (Status) {
       switch (Status.toLowerCase()) {
-        case "completed":
-          contactStatus = "Completed";
+        case 'completed':
+          contactStatus = 'Completed';
           break;
-        case "no-answer":
-          contactStatus = "No Answer";
+        case 'no-answer':
+          contactStatus = 'No Answer';
           break;
-        case "busy":
-          contactStatus = "Busy";
+        case 'busy':
+          contactStatus = 'Busy';
           break;
-        case "failed":
-          contactStatus = "Failed";
+        case 'failed':
+          contactStatus = looksSwitchedOff() ? 'Switched Off' : 'Failed';
           break;
-        case "canceled":
-        case "cancelled":
-          contactStatus = "Cancelled";
+        case 'canceled':
+        case 'cancelled':
+          contactStatus = 'Cancelled';
           break;
         default:
-          contactStatus = "Failed";
+          contactStatus = 'Failed';
       }
     } else if (Outcome) {
       // Fallback to Outcome field if Status not provided
       switch (Outcome.toLowerCase()) {
-        case "call was successful":
-          contactStatus = "Completed";
+        case 'call was successful':
+          contactStatus = 'Completed';
           break;
-        case "call failed":
-          contactStatus = "Failed";
+        case 'call failed':
+          contactStatus = looksSwitchedOff() ? 'Switched Off' : 'Failed';
           break;
-        case "busy":
-          contactStatus = "Busy";
+        case 'busy':
+          contactStatus = 'Busy';
           break;
-        case "no answer":
-          contactStatus = "No Answer";
+        case 'no answer':
+          contactStatus = 'No Answer';
           break;
-        case "cancelled":
-          contactStatus = "Cancelled";
+        case 'cancelled':
+          contactStatus = 'Cancelled';
           break;
         default:
-          contactStatus = "Failed";
+          contactStatus = 'Failed';
       }
     } else {
-      contactStatus = "Failed";
+      contactStatus = 'Failed';
     }
 
     // Update contact record
@@ -168,7 +212,7 @@ const handleExotelWebhook = async (req, res) => {
     };
 
     // Only increment attempts for final statuses (not "In Progress" or "Initiated")
-    if (contactStatus !== "In Progress" && contactStatus !== "Initiated") {
+    if (contactStatus !== 'In Progress' && contactStatus !== 'Initiated') {
       updateData.attempts = contact.attempts + 1;
     }
 
@@ -178,9 +222,9 @@ const handleExotelWebhook = async (req, res) => {
       let durationInSeconds = 0;
 
       // Handle different duration formats
-      if (typeof durationField === "string" && durationField.includes(":")) {
+      if (typeof durationField === 'string' && durationField.includes(':')) {
         // Handle "HH:MM:SS" format from Exotel dashboard
-        const timeParts = durationField.split(":");
+        const timeParts = durationField.split(':');
         if (timeParts.length === 3) {
           const hours = parseInt(timeParts[0]) || 0;
           const minutes = parseInt(timeParts[1]) || 0;
@@ -212,7 +256,7 @@ const handleExotelWebhook = async (req, res) => {
 
     // Find the most recent call log for this contact to update it (using raw SQL)
     const [existingLogs] = await sequelize.query(
-      `SELECT * FROM call_logs WHERE contact_id = ${contact.id} AND exotel_call_sid = '${CallSid}' ORDER BY createdAt DESC LIMIT 1`
+      `SELECT * FROM call_logs WHERE contact_id = ${contact.id} AND exotel_call_sid = '${CallSid}' ORDER BY createdAt DESC LIMIT 1`,
     );
     const existingCallLog = existingLogs.length > 0 ? existingLogs[0] : null;
 
@@ -222,19 +266,19 @@ const handleExotelWebhook = async (req, res) => {
         `UPDATE call_logs SET 
           status = '${contactStatus}', 
           duration = ${
-            updateData.duration || existingCallLog.duration || "NULL"
+            updateData.duration || existingCallLog.duration || 'NULL'
           }, 
           recording_url = ${
-            updateData.recording_url ? `'${updateData.recording_url}'` : "NULL"
+            updateData.recording_url ? `'${updateData.recording_url}'` : 'NULL'
           }, 
           updatedAt = '${new Date().toISOString()}' 
-        WHERE id = ${existingCallLog.id}`
+        WHERE id = ${existingCallLog.id}`,
       );
     } else {
       // Create new call log entry using raw SQL
       const attemptNo =
         contact.attempts +
-        (contactStatus !== "In Progress" && contactStatus !== "Initiated"
+        (contactStatus !== 'In Progress' && contactStatus !== 'Initiated'
           ? 1
           : 0);
       await sequelize.query(
@@ -242,16 +286,16 @@ const handleExotelWebhook = async (req, res) => {
          VALUES (${
            contact.id
          }, '${CallSid}', ${attemptNo}, '${contactStatus}', ${
-          updateData.duration || "NULL"
+          updateData.duration || 'NULL'
         }, ${
-          updateData.recording_url ? `'${updateData.recording_url}'` : "NULL"
-        }, '${new Date().toISOString()}', '${new Date().toISOString()}')`
+          updateData.recording_url ? `'${updateData.recording_url}'` : 'NULL'
+        }, '${new Date().toISOString()}', '${new Date().toISOString()}')`,
       );
     }
 
     res.json({
       success: true,
-      message: "Webhook processed successfully",
+      message: 'Webhook processed successfully',
       callSid: CallSid,
       contact: {
         id: contact.id,
@@ -262,16 +306,16 @@ const handleExotelWebhook = async (req, res) => {
         recording_url: updateData.recording_url,
         attempts:
           contact.attempts +
-          (contactStatus !== "In Progress" && contactStatus !== "Initiated"
+          (contactStatus !== 'In Progress' && contactStatus !== 'Initiated'
             ? 1
             : 0),
       },
     });
   } catch (error) {
-    console.error("❌ Error processing Exotel webhook:", error);
+    console.error('❌ Error processing Exotel webhook:', error);
 
     res.status(500).json({
-      error: "Failed to process webhook",
+      error: 'Failed to process webhook',
       details: error.message,
     });
   }
@@ -281,7 +325,7 @@ const handleExotelWebhook = async (req, res) => {
 const webhookHealth = (req, res) => {
   res.json({
     success: true,
-    message: "Exotel webhook endpoint is healthy",
+    message: 'Exotel webhook endpoint is healthy',
     timestamp: new Date().toISOString(),
   });
 };

@@ -12,6 +12,8 @@ import {
   X,
   ChevronLeft,
   ChevronRight,
+  ChevronUp,
+  ChevronDown,
   StickyNote,
   Save,
   Edit,
@@ -54,6 +56,12 @@ const CallTable = () => {
   const pollingIntervalRef = React.useRef(null);
   // Track which contact is being polled for call status
   const activeCallPollingRef = React.useRef(null);
+  // Ref for table container to enable scroll-to-top/bottom
+  const tableContainerRef = React.useRef(null);
+  // Ref for horizontal scroll container
+  const horizontalScrollRef = React.useRef(null);
+  const [showLeftScroll, setShowLeftScroll] = useState(false);
+  const [showRightScroll, setShowRightScroll] = useState(true);
   const [dateFilter, setDateFilter] = useState('');
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [dateRange, setDateRange] = useState('all');
@@ -432,6 +440,130 @@ const CallTable = () => {
   useEffect(() => {
     setCurrentPage(1);
   }, [dateFilter, dateRange, storeFilter, productFilter, statusFilter]);
+
+  // Find the scrollable parent container (main element with overflow-y: auto)
+  const getScrollableContainer = () => {
+    if (tableContainerRef.current) {
+      let element = tableContainerRef.current.parentElement;
+      // Traverse up the DOM tree to find the scrollable container
+      while (element && element !== document.body) {
+        const style = window.getComputedStyle(element);
+        const hasOverflow = 
+          style.overflowY === 'auto' || 
+          style.overflowY === 'scroll' ||
+          style.overflow === 'auto' || 
+          style.overflow === 'scroll';
+        
+        if (hasOverflow) {
+          return element;
+        }
+        element = element.parentElement;
+      }
+    }
+    // Fallback: try to find main element
+    const mainElement = document.querySelector('main[style*="overflow"]');
+    return mainElement || null;
+  };
+
+  // Scroll to top function - scrolls to the top of the table
+  const scrollToTop = () => {
+    if (tableContainerRef.current) {
+      // Use scrollIntoView which works with any scrollable ancestor
+      tableContainerRef.current.scrollIntoView({ 
+        behavior: 'smooth', 
+        block: 'start',
+        inline: 'nearest'
+      });
+    } else {
+      // Fallback: scroll window
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  };
+
+  // Scroll to bottom function - scrolls to the bottom of the scrollable container
+  const scrollToBottom = () => {
+    const scrollableContainer = getScrollableContainer();
+    
+    if (scrollableContainer) {
+      // Scroll the container to its bottom
+      scrollableContainer.scrollTo({
+        top: scrollableContainer.scrollHeight - scrollableContainer.clientHeight,
+        behavior: 'smooth',
+      });
+    } else {
+      // Fallback: scroll window to bottom
+      window.scrollTo({
+        top: document.documentElement.scrollHeight - window.innerHeight,
+        behavior: 'smooth',
+      });
+    }
+  };
+
+  // Horizontal scroll functions
+  const scrollLeft = () => {
+    if (horizontalScrollRef.current) {
+      horizontalScrollRef.current.scrollBy({
+        left: -300,
+        behavior: 'smooth',
+      });
+    }
+  };
+
+  const scrollRight = () => {
+    if (horizontalScrollRef.current) {
+      horizontalScrollRef.current.scrollBy({
+        left: 300,
+        behavior: 'smooth',
+      });
+    }
+  };
+
+  // Check scroll position to show/hide scroll buttons
+  const checkScrollPosition = () => {
+    if (horizontalScrollRef.current) {
+      const { scrollLeft, scrollWidth, clientWidth } = horizontalScrollRef.current;
+      setShowLeftScroll(scrollLeft > 0);
+      setShowRightScroll(scrollLeft < scrollWidth - clientWidth - 10);
+    }
+  };
+
+  // Add scroll event listener and keyboard support
+  useEffect(() => {
+    const scrollContainer = horizontalScrollRef.current;
+    if (scrollContainer) {
+      scrollContainer.addEventListener('scroll', checkScrollPosition);
+      // Initial check
+      checkScrollPosition();
+      // Check on resize
+      window.addEventListener('resize', checkScrollPosition);
+      
+      // Keyboard support for horizontal scrolling (Shift + Arrow keys)
+      const handleKeyDown = (e) => {
+        // Check if the scroll container is in view or focused
+        const rect = scrollContainer.getBoundingClientRect();
+        const isInView = rect.top < window.innerHeight && rect.bottom > 0;
+        
+        if (isInView && (e.shiftKey || e.target === scrollContainer || scrollContainer.contains(e.target))) {
+          if (e.key === 'ArrowLeft' || (e.shiftKey && e.key === 'ArrowLeft')) {
+            e.preventDefault();
+            scrollLeft();
+          } else if (e.key === 'ArrowRight' || (e.shiftKey && e.key === 'ArrowRight')) {
+            e.preventDefault();
+            scrollRight();
+          }
+        }
+      };
+      
+      // Add keyboard listener when table is visible
+      document.addEventListener('keydown', handleKeyDown);
+      
+      return () => {
+        scrollContainer.removeEventListener('scroll', checkScrollPosition);
+        window.removeEventListener('resize', checkScrollPosition);
+        document.removeEventListener('keydown', handleKeyDown);
+      };
+    }
+  }, [filteredContacts.length]);
 
   // Cleanup polling interval on unmount
   useEffect(() => {
@@ -1292,15 +1424,15 @@ const CallTable = () => {
   }
 
   return (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+    <div ref={tableContainerRef} className="bg-white rounded-lg shadow-sm border border-gray-200">
       {/* Header */}
-      <div className="px-6 py-4 border-b border-gray-200">
-        <div className="flex items-center justify-between">
+      <div className="px-4 sm:px-6 py-3 sm:py-4 border-b border-gray-200">
+        <div className="flex items-center justify-between flex-wrap gap-2">
           <div>
-            <h3 className="text-lg font-semibold text-gray-900">
+            <h3 className="text-base sm:text-lg font-semibold text-gray-900">
               Call Management
             </h3>
-            <p className="text-sm text-gray-600">
+            <p className="text-xs sm:text-sm text-gray-600">
               Live contact status and calling interface •{' '}
               {filteredContacts.length} contacts
               {(dateFilter || storeFilter !== 'all' || productFilter !== 'all' || statusFilter !== 'all') &&
@@ -1311,7 +1443,7 @@ const CallTable = () => {
       </div>
 
       {/* Filter Section */}
-      <div className="px-6 py-4 border-b border-gray-200 bg-gray-50 relative z-10">
+      <div className="px-4 sm:px-6 py-3 sm:py-4 border-b border-gray-200 bg-gray-50 relative z-10">
         <div className="flex items-center justify-between gap-6 flex-wrap">
           {/* Left Section: Date Filters */}
           <div className="flex items-center gap-4 flex-wrap">
@@ -1812,44 +1944,76 @@ const CallTable = () => {
       {filteredContacts.length === 0 ? (
         <EmptyStates.NoContacts />
       ) : (
-        <div className="overflow-x-auto border border-gray-200 rounded-lg relative z-0">
+        <div 
+          className="relative border border-gray-200 rounded-lg -mx-4 sm:mx-0"
+        >
+          {/* Horizontal Scroll Buttons - Sticky positioning */}
+          {showLeftScroll && (
+            <button
+              onClick={scrollLeft}
+              className="sticky left-2 top-1/2 -translate-y-1/2 z-10 w-10 h-10 bg-white border border-gray-300 rounded-full shadow-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-all duration-200 flex items-center justify-center group float-left"
+              title="Scroll left"
+              aria-label="Scroll left"
+              style={{ marginLeft: '8px' }}
+            >
+              <ChevronLeft className="w-5 h-5 text-gray-700 group-hover:text-blue-600" />
+            </button>
+          )}
+          {showRightScroll && (
+            <button
+              onClick={scrollRight}
+              className="sticky right-2 top-1/2 -translate-y-1/2 z-10 w-10 h-10 bg-white border border-gray-300 rounded-full shadow-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-all duration-200 flex items-center justify-center group float-right"
+              title="Scroll right"
+              aria-label="Scroll right"
+              style={{ marginRight: '8px' }}
+            >
+              <ChevronRight className="w-5 h-5 text-gray-700 group-hover:text-blue-600" />
+            </button>
+          )}
+          <div
+            ref={horizontalScrollRef}
+            className="overflow-x-auto scrollbar-thin scrollbar-thumb-gray-400 scrollbar-track-gray-100 hover:scrollbar-thumb-gray-500"
+            style={{
+              scrollbarWidth: 'thin',
+              scrollbarColor: '#9ca3af #f3f4f6',
+            }}
+          >
           <table
-            className="w-full table-fixed divide-y divide-gray-200"
-            style={{ tableLayout: 'fixed' }}
+            className="w-full min-w-[800px] divide-y divide-gray-200"
           >
             <thead className="bg-gray-50">
               <tr>
-                <th className="w-48 px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-2 sm:px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[120px] sm:min-w-[150px]">
                   Name
                 </th>
-                <th className="w-44 pl-4 pr-1 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-2 sm:px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[100px] sm:min-w-[130px]">
                   Phone
                 </th>
-                <th className="w-56 px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-2 sm:px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden sm:table-cell min-w-[140px]">
                   Product
                 </th>
-                <th className="w-24 px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-2 sm:px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[70px]">
                   Price
                 </th>
-                <th className="w-56 px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-2 sm:px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden md:table-cell min-w-[150px]">
                   Address
                 </th>
-                <th className="w-36 px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden lg:table-cell">
+                <th className="px-2 sm:px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden lg:table-cell min-w-[100px]">
                   Time
                 </th>
-                <th className="w-28 px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-2 sm:px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[90px]">
                   Status
                 </th>
-                <th className="w-20 px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider hidden md:table-cell">
+                <th className="px-2 sm:px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider hidden md:table-cell min-w-[80px]">
                   Attempts
                 </th>
-                <th className="w-36 px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-2 sm:px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[100px]">
                   Override
                 </th>
-                <th className="w-32 px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-2 sm:px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider hidden sm:table-cell min-w-[90px]">
                   Remark
                 </th>
-                <th className="w-40 px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-2 sm:px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[120px]">
                   Action
                 </th>
               </tr>
@@ -1862,17 +2026,17 @@ const CallTable = () => {
                   style={{ height: 'auto' }}
                 >
                   {/* Name */}
-                  <td className="w-48 px-4 py-4">
+                  <td className="px-2 sm:px-4 py-3 sm:py-4">
                     <div className="flex items-center">
-                      <div className="flex-shrink-0 h-8 w-8">
-                        <div className="h-8 w-8 rounded-full bg-blue-100 flex items-center justify-center">
-                          <span className="text-sm font-medium text-blue-600">
+                      <div className="flex-shrink-0 h-6 w-6 sm:h-8 sm:w-8">
+                        <div className="h-6 w-6 sm:h-8 sm:w-8 rounded-full bg-blue-100 flex items-center justify-center">
+                          <span className="text-xs sm:text-sm font-medium text-blue-600">
                             {contact.name?.charAt(0)?.toUpperCase() || '?'}
                           </span>
                         </div>
                       </div>
-                      <div className="ml-3 min-w-0 flex-1">
-                        <div className="text-sm font-medium text-gray-900 truncate">
+                      <div className="ml-2 sm:ml-3 min-w-0 flex-1">
+                        <div className="text-xs sm:text-sm font-medium text-gray-900 truncate">
                           {contact.name || 'Unknown'}
                         </div>
                       </div>
@@ -1880,54 +2044,54 @@ const CallTable = () => {
                   </td>
 
                   {/* Phone */}
-                  <td className="w-44 pl-4 pr-1 py-4">
-                    <div className="text-sm text-gray-900 font-mono">
+                  <td className="px-2 sm:px-4 py-3 sm:py-4">
+                    <div className="text-xs sm:text-sm text-gray-900 font-mono break-all">
                       {contact.phone || 'N/A'}
                     </div>
                   </td>
 
                   {/* Product */}
-                  <td className="w-56 px-4 py-4">
+                  <td className="px-2 sm:px-4 py-3 sm:py-4 hidden sm:table-cell">
                     {contact.product_name ? (
                       <div
-                        className="text-sm text-gray-700 truncate"
+                        className="text-xs sm:text-sm text-gray-700 truncate"
                         title={contact.product_name}
                       >
                         {contact.product_name}
                       </div>
                     ) : (
-                      <span className="text-sm text-gray-400">-</span>
+                      <span className="text-xs sm:text-sm text-gray-400">-</span>
                     )}
                   </td>
 
                   {/* Price */}
-                  <td className="w-24 px-4 py-4 text-center">
+                  <td className="px-2 sm:px-4 py-3 sm:py-4 text-center">
                     {contact.price ? (
-                      <div className="text-sm font-medium text-green-600">
+                      <div className="text-xs sm:text-sm font-medium text-green-600 whitespace-nowrap">
                         ₹{contact.price}
                       </div>
                     ) : (
-                      <span className="text-sm text-gray-400">-</span>
+                      <span className="text-xs sm:text-sm text-gray-400">-</span>
                     )}
                   </td>
 
                   {/* Address */}
-                  <td className="w-56 px-4 py-4">
+                  <td className="px-2 sm:px-4 py-3 sm:py-4 hidden md:table-cell">
                     {contact.address ? (
                       <div
-                        className="text-sm text-gray-700 truncate"
+                        className="text-xs sm:text-sm text-gray-700 truncate"
                         title={contact.address}
                       >
                         {contact.address}
                       </div>
                     ) : (
-                      <span className="text-sm text-gray-400">-</span>
+                      <span className="text-xs sm:text-sm text-gray-400">-</span>
                     )}
                   </td>
 
                   {/* Schedule Time */}
-                  <td className="w-36 px-4 py-4 hidden lg:table-cell">
-                    <div className="text-sm text-gray-900">
+                  <td className="px-2 sm:px-4 py-3 sm:py-4 hidden lg:table-cell">
+                    <div className="text-xs sm:text-sm text-gray-900">
                       {formatScheduleTime(
                         contact.schedule_time,
                         contact.last_attempt,
@@ -1937,21 +2101,21 @@ const CallTable = () => {
                   </td>
 
                   {/* Status */}
-                  <td className="w-28 px-4 py-4 text-center">
+                  <td className="px-2 sm:px-4 py-3 sm:py-4 text-center">
                     <div className="flex justify-center">
                       {getStatusBadge(contact.status, contact.id)}
                     </div>
                   </td>
 
                   {/* Attempts */}
-                  <td className="w-20 px-4 py-4 text-center hidden md:table-cell">
+                  <td className="px-2 sm:px-4 py-3 sm:py-4 text-center hidden md:table-cell">
                     <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
                       {contact.attempts || 0}
                     </span>
                   </td>
 
                   {/* Override dropdown (custom menu) */}
-                  <td className="w-36 px-4 py-4 text-center">
+                  <td className="px-2 sm:px-4 py-3 sm:py-4 text-center">
                     <div className="relative inline-block text-left">
                       <button
                         type="button"
@@ -2143,7 +2307,7 @@ const CallTable = () => {
                   </td>
 
                   {/* Remark dropdown (custom menu) */}
-                  <td className="w-32 px-4 py-4 text-center">
+                  <td className="px-2 sm:px-4 py-3 sm:py-4 text-center hidden sm:table-cell">
                     <div className="relative inline-block text-left">
                       <button
                         type="button"
@@ -2353,8 +2517,8 @@ const CallTable = () => {
                   </td>
 
                   {/* Action */}
-                  <td className="w-40 px-4 py-4 text-center">
-                    <div className="flex items-center justify-center gap-1.5 flex-wrap">
+                  <td className="px-2 sm:px-4 py-3 sm:py-4 text-center">
+                    <div className="flex items-center justify-center gap-1 sm:gap-1.5 flex-wrap">
                       {/* Call Button */}
                       <button
                         onClick={() => handleCall(contact.id, contact.name)}
@@ -2392,12 +2556,35 @@ const CallTable = () => {
               ))}
             </tbody>
           </table>
+          </div>
+        </div>
+      )}
+
+      {/* Scroll to Top/Bottom Buttons */}
+      {filteredContacts.length > 0 && (
+        <div className="fixed bottom-4 right-4 sm:bottom-8 sm:right-8 z-50 flex flex-col gap-2">
+          <button
+            onClick={scrollToTop}
+            className="inline-flex items-center justify-center w-10 h-10 sm:w-12 sm:h-12 bg-blue-600 text-white rounded-full shadow-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-all duration-200 hover:scale-110"
+            title="Scroll to top"
+            aria-label="Scroll to top"
+          >
+            <ChevronUp className="w-5 h-5 sm:w-6 sm:h-6" />
+          </button>
+          <button
+            onClick={scrollToBottom}
+            className="inline-flex items-center justify-center w-10 h-10 sm:w-12 sm:h-12 bg-blue-600 text-white rounded-full shadow-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-all duration-200 hover:scale-110"
+            title="Scroll to bottom"
+            aria-label="Scroll to bottom"
+          >
+            <ChevronDown className="w-5 h-5 sm:w-6 sm:h-6" />
+          </button>
         </div>
       )}
 
       {/* Pagination Controls */}
       {filteredContacts.length > 0 && (
-        <div className="bg-white px-4 py-3 flex items-center justify-between border-t border-gray-200 sm:px-6">
+        <div className="bg-white px-2 sm:px-4 lg:px-6 py-2 sm:py-3 flex items-center justify-between border-t border-gray-200 flex-wrap gap-2">
           <div className="flex-1 flex justify-between sm:hidden">
             <button
               onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}

@@ -132,6 +132,7 @@ const CallTable = () => {
     { value: 'Busy', label: 'Busy', color: 'bg-orange-500', icon: Phone },
     { value: 'Ringing', label: 'Ringing', color: 'bg-blue-500', icon: Clock },
     { value: 'Failed', label: 'Failed', color: 'bg-red-500', icon: XCircle },
+    { value: 'Completed', label: 'Completed', color: 'bg-green-500', icon: CheckCircle },
   ];
 
   // Confirmation modal states

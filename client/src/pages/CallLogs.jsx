@@ -224,11 +224,53 @@ const CallLogs = () => {
             style={{ width: '20px', height: '20px', color: '#ef4444' }}
           />
         );
+      case 'busy':
+        return (
+          <Phone
+            style={{ width: '20px', height: '20px', color: '#f97316' }}
+          />
+        );
+      case 'no answer':
+        return (
+          <Clock
+            style={{ width: '20px', height: '20px', color: '#f59e0b' }}
+          />
+        );
       case 'switched off':
       case 'switchedoff':
         return (
           <XCircle
             style={{ width: '20px', height: '20px', color: '#8b5cf6' }}
+          />
+        );
+      case 'cancelled':
+        return (
+          <XCircle
+            style={{ width: '20px', height: '20px', color: '#ef4444' }}
+          />
+        );
+      case 'ringing':
+        return (
+          <Phone
+            style={{ width: '20px', height: '20px', color: '#3b82f6' }}
+          />
+        );
+      case 'not connect':
+        return (
+          <XCircle
+            style={{ width: '20px', height: '20px', color: '#6b7280' }}
+          />
+        );
+      case 'in progress':
+        return (
+          <Clock
+            style={{ width: '20px', height: '20px', color: '#3b82f6' }}
+          />
+        );
+      case 'not called':
+        return (
+          <Clock
+            style={{ width: '20px', height: '20px', color: '#9ca3af' }}
           />
         );
       default:
@@ -244,9 +286,23 @@ const CallLogs = () => {
         return { backgroundColor: '#dcfce7', color: '#166534' };
       case 'failed':
         return { backgroundColor: '#fef2f2', color: '#991b1b' };
+      case 'busy':
+        return { backgroundColor: '#fed7aa', color: '#9a3412' };
+      case 'no answer':
+        return { backgroundColor: '#fef3c7', color: '#92400e' };
       case 'switched off':
       case 'switchedoff':
         return { backgroundColor: '#f3e8ff', color: '#5b21b6' };
+      case 'cancelled':
+        return { backgroundColor: '#fee2e2', color: '#991b1b' };
+      case 'ringing':
+        return { backgroundColor: '#dbeafe', color: '#1e40af' };
+      case 'not connect':
+        return { backgroundColor: '#f3f4f6', color: '#374151' };
+      case 'in progress':
+        return { backgroundColor: '#dbeafe', color: '#1e40af' };
+      case 'not called':
+        return { backgroundColor: '#f9fafb', color: '#6b7280' };
       default:
         return { backgroundColor: '#fef3c7', color: '#92400e' };
     }
@@ -564,9 +620,17 @@ const CallLogs = () => {
                 backgroundColor: 'white',
               }}
             >
-              <option value="all">All Calls</option>
+              <option value="all">All</option>
               <option value="completed">Completed</option>
               <option value="failed">Failed</option>
+              <option value="busy">Busy</option>
+              <option value="no answer">No Answer</option>
+              <option value="switched off">Switched Off</option>
+              <option value="cancelled">Cancelled</option>
+              <option value="ringing">Ringing</option>
+              <option value="not connect">Not Connect</option>
+              <option value="in progress">In Progress</option>
+              <option value="not called">Not Called</option>
             </select>
           </div>
 

@@ -1646,7 +1646,7 @@ const CallTable = () => {
                   <select
                     value={storeFilter}
                     onChange={(e) => setStoreFilter(e.target.value)}
-                    className="appearance-none px-3 py-2 pr-8 text-sm border border-gray-300 rounded-md bg-white text-gray-700 hover:bg-gray-50 hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1 focus:border-blue-500 transition-all duration-200 min-w-[140px] cursor-pointer"
+                    className="appearance-none px-3 py-2 pr-8 text-sm border border-gray-300 rounded-md bg-white text-gray-700 hover:bg-gray-50 hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1 focus:border-blue-500 transition-all duration-200 min-w-[140px] max-w-[200px] cursor-pointer"
                   >
                     <option value="all">All Stores</option>
                     {uniqueStores.map((store) => (
@@ -1693,7 +1693,8 @@ const CallTable = () => {
                   <select
                     value={productFilter}
                     onChange={(e) => setProductFilter(e.target.value)}
-                    className="appearance-none px-3 py-2 pr-8 text-sm border border-gray-300 rounded-md bg-white text-gray-700 hover:bg-gray-50 hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1 focus:border-blue-500 transition-all duration-200 min-w-[140px] cursor-pointer"
+                    className="appearance-none px-3 py-2 pr-8 text-sm border border-gray-300 rounded-md bg-white text-gray-700 hover:bg-gray-50 hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1 focus:border-blue-500 transition-all duration-200 min-w-[140px] max-w-[200px] cursor-pointer"
+                    style={{ zIndex: 20 }}
                   >
                     <option value="all">All Products</option>
                     {uniqueProducts.map((product) => (
@@ -1739,7 +1740,7 @@ const CallTable = () => {
                 <select
                   value={statusFilter}
                   onChange={(e) => setStatusFilter(e.target.value)}
-                  className="appearance-none px-3 py-2 pr-8 text-sm border border-gray-300 rounded-md bg-white text-gray-700 hover:bg-gray-50 hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1 focus:border-blue-500 transition-all duration-200 min-w-[140px] cursor-pointer"
+                  className="appearance-none px-3 py-2 pr-8 text-sm border border-gray-300 rounded-md bg-white text-gray-700 hover:bg-gray-50 hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1 focus:border-blue-500 transition-all duration-200 min-w-[140px] max-w-[200px] cursor-pointer"
                 >
                   <option value="all">All</option>
                   <option value="completed">Completed</option>

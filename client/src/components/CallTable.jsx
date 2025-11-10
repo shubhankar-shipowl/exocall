@@ -59,6 +59,7 @@ const CallTable = () => {
   const [dateRange, setDateRange] = useState('all');
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [storeFilter, setStoreFilter] = useState('all');
+  const [productFilter, setProductFilter] = useState('all');
 
   // Safe modal state setter
   const safeSetCallModal = (newState) => {
@@ -389,6 +390,11 @@ const CallTable = () => {
     ...new Set(contacts.filter((c) => c.store).map((c) => c.store)),
   ].sort();
 
+  // Get unique product names from contacts
+  const uniqueProducts = [
+    ...new Set(contacts.filter((c) => c.product_name).map((c) => c.product_name)),
+  ].sort();
+
   const filteredContacts = contacts.filter((contact) => {
     // Effective status considers manual override
     const effectiveStatus = statusOverrideById[contact.id] || contact.status;
@@ -401,6 +407,11 @@ const CallTable = () => {
     // Store filter
     if (storeFilter !== 'all') {
       if (!contact.store || contact.store !== storeFilter) return false;
+    }
+
+    // Product Name filter
+    if (productFilter !== 'all') {
+      if (!contact.product_name || contact.product_name !== productFilter) return false;
     }
 
     // Status filter
@@ -420,7 +431,7 @@ const CallTable = () => {
   // Reset to first page when filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [dateFilter, dateRange, storeFilter]);
+  }, [dateFilter, dateRange, storeFilter, productFilter, statusFilter]);
 
   // Cleanup polling interval on unmount
   useEffect(() => {
@@ -526,6 +537,8 @@ const CallTable = () => {
     setDateRange('all');
     setShowDatePicker(false);
     setStoreFilter('all');
+    setProductFilter('all');
+    setStatusFilter('all');
   };
 
   // Handle call initiation
@@ -1290,7 +1303,7 @@ const CallTable = () => {
             <p className="text-sm text-gray-600">
               Live contact status and calling interface •{' '}
               {filteredContacts.length} contacts
-              {(dateFilter || storeFilter !== 'all') &&
+              {(dateFilter || storeFilter !== 'all' || productFilter !== 'all' || statusFilter !== 'all') &&
                 ` (filtered from ${contacts.length} total)`}
             </p>
           </div>
@@ -1663,6 +1676,53 @@ const CallTable = () => {
                     onClick={() => setStoreFilter('all')}
                     className="inline-flex items-center gap-1 px-2 py-2 text-xs text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-md transition-colors"
                     title="Clear store filter"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+            )}
+
+            {/* Product Name Filter */}
+            {uniqueProducts.length > 0 && (
+              <div className="flex items-center gap-2 relative z-10">
+                <label className="text-sm font-medium text-gray-700 whitespace-nowrap">
+                  Product:
+                </label>
+                <div className="relative">
+                  <select
+                    value={productFilter}
+                    onChange={(e) => setProductFilter(e.target.value)}
+                    className="appearance-none px-3 py-2 pr-8 text-sm border border-gray-300 rounded-md bg-white text-gray-700 hover:bg-gray-50 hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1 focus:border-blue-500 transition-all duration-200 min-w-[140px] cursor-pointer"
+                  >
+                    <option value="all">All Products</option>
+                    {uniqueProducts.map((product) => (
+                      <option key={product} value={product}>
+                        {product}
+                      </option>
+                    ))}
+                  </select>
+                  <div className="absolute inset-y-0 right-0 flex items-center pr-2 pointer-events-none">
+                    <svg
+                      className="w-4 h-4 text-gray-400"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M19 9l-7 7-7-7"
+                      />
+                    </svg>
+                  </div>
+                </div>
+                {productFilter !== 'all' && (
+                  <button
+                    onClick={() => setProductFilter('all')}
+                    className="inline-flex items-center gap-1 px-2 py-2 text-xs text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-md transition-colors"
+                    title="Clear product filter"
                   >
                     <X className="w-3.5 h-3.5" />
                   </button>

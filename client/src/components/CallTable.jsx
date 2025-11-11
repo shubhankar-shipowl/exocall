@@ -2139,15 +2139,32 @@ const CallTable = () => {
                         onClick={(e) => {
                           e.stopPropagation();
                           const rect = e.currentTarget.getBoundingClientRect();
-                          // Place menu below button; clamp to viewport with 8px margin
-                          const top = Math.min(
-                            window.innerHeight - 16,
-                            rect.bottom + 8,
-                          );
+                          const viewportHeight = window.innerHeight;
+                          const viewportWidth = window.innerWidth;
+                          const menuHeight = 300; // Approximate menu height
+                          const spaceBelow = viewportHeight - rect.bottom;
+                          const spaceAbove = rect.top;
+                          
+                          // Determine if menu should open above or below
+                          let top;
+                          if (spaceBelow < menuHeight && spaceAbove > spaceBelow) {
+                            // Open above the button
+                            top = rect.top - menuHeight - 8;
+                          } else {
+                            // Open below the button
+                            top = rect.bottom + 8;
+                          }
+                          
+                          // Clamp to viewport
+                          top = Math.max(8, Math.min(viewportHeight - menuHeight - 8, top));
+                          
+                          // Center horizontally on button (accounting for translateX(-50%))
+                          const buttonCenter = rect.left + rect.width / 2;
                           const left = Math.min(
-                            window.innerWidth - 16,
-                            Math.max(8, rect.left + rect.width / 2),
+                            viewportWidth - 88, // Half of menu width (176/2)
+                            Math.max(88, buttonCenter), // Half of menu width
                           );
+                          
                           setOverrideMenuPos({ top, left });
                           setPendingOverrideById((prev) => ({
                             ...prev,
@@ -2196,10 +2213,8 @@ const CallTable = () => {
                             top: overrideMenuPos.top,
                             left: overrideMenuPos.left,
                             transform: 'translateX(-50%)',
-                            maxHeight: `calc(100vh - ${
-                              overrideMenuPos.top + 8
-                            }px)`,
-                            overflow: 'auto',
+                            maxHeight: '400px',
+                            overflowY: 'auto',
                           }}
                           onClick={(e) => e.stopPropagation()}
                         >
@@ -2331,15 +2346,32 @@ const CallTable = () => {
                         onClick={(e) => {
                           e.stopPropagation();
                           const rect = e.currentTarget.getBoundingClientRect();
-                          // Place menu below button; clamp to viewport with 8px margin
-                          const top = Math.min(
-                            window.innerHeight - 16,
-                            rect.bottom + 8,
-                          );
+                          const viewportHeight = window.innerHeight;
+                          const viewportWidth = window.innerWidth;
+                          const menuHeight = 200; // Approximate menu height
+                          const spaceBelow = viewportHeight - rect.bottom;
+                          const spaceAbove = rect.top;
+                          
+                          // Determine if menu should open above or below
+                          let top;
+                          if (spaceBelow < menuHeight && spaceAbove > spaceBelow) {
+                            // Open above the button
+                            top = rect.top - menuHeight - 8;
+                          } else {
+                            // Open below the button
+                            top = rect.bottom + 8;
+                          }
+                          
+                          // Clamp to viewport
+                          top = Math.max(8, Math.min(viewportHeight - menuHeight - 8, top));
+                          
+                          // Center horizontally on button (accounting for translateX(-50%))
+                          const buttonCenter = rect.left + rect.width / 2;
                           const left = Math.min(
-                            window.innerWidth - 16,
-                            Math.max(8, rect.left + rect.width / 2),
+                            viewportWidth - 80, // Half of menu width (140/2)
+                            Math.max(80, buttonCenter), // Half of menu width
                           );
+                          
                           setRemarkMenuPos({ top, left });
                           setPendingRemarkById((prev) => ({
                             ...prev,
@@ -2389,10 +2421,8 @@ const CallTable = () => {
                             top: remarkMenuPos.top,
                             left: remarkMenuPos.left,
                             transform: 'translateX(-50%)',
-                            maxHeight: `calc(100vh - ${
-                              remarkMenuPos.top + 8
-                            }px)`,
-                            overflow: 'auto',
+                            maxHeight: '300px',
+                            overflowY: 'auto',
                           }}
                           onClick={(e) => e.stopPropagation()}
                         >

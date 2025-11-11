@@ -33,6 +33,7 @@ import { useAuth } from '../contexts/AuthContext';
 const CallLogs = () => {
   const { isAdmin } = useAuth();
   const [filter, setFilter] = useState('all');
+  const [remarkFilter, setRemarkFilter] = useState('all');
   const [selectedDate, setSelectedDate] = useState('');
   const [dateRange, setDateRange] = useState('all');
   const [calls, setCalls] = useState([]);
@@ -158,14 +159,20 @@ const CallLogs = () => {
     };
   }, [showCalendar]);
 
-  // Filter calls based on status and date
+  // Filter calls based on status, remark, and date
   const filteredCalls = calls.filter((call) => {
     const statusMatch =
       filter === 'all' || (call.status || '').toLowerCase() === filter;
+    
+    const remarkMatch =
+      remarkFilter === 'all' || 
+      (remarkFilter === 'accept' && call.remark === 'accept') ||
+      (remarkFilter === 'reject' && call.remark === 'reject') ||
+      (remarkFilter === 'none' && (!call.remark || call.remark === ''));
 
-    if (!selectedDate) return statusMatch;
+    if (!selectedDate) return statusMatch && remarkMatch;
 
-    return statusMatch && call.date === selectedDate;
+    return statusMatch && remarkMatch && call.date === selectedDate;
   });
 
   // Pagination logic
@@ -177,7 +184,7 @@ const CallLogs = () => {
   // Reset to first page when filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [filter, selectedDate, dateRange]);
+  }, [filter, remarkFilter, selectedDate, dateRange]);
 
   // Clear date filter
   const clearDateFilter = () => {
@@ -634,6 +641,38 @@ const CallLogs = () => {
             </select>
           </div>
 
+          {/* Remark Filter */}
+          <div>
+            <label
+              style={{
+                display: 'block',
+                fontSize: '14px',
+                fontWeight: '500',
+                color: '#374151',
+                marginBottom: '6px',
+              }}
+            >
+              Remark
+            </label>
+            <select
+              value={remarkFilter}
+              onChange={(e) => setRemarkFilter(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '8px 12px',
+                border: '1px solid #d1d5db',
+                borderRadius: '6px',
+                fontSize: '14px',
+                backgroundColor: 'white',
+              }}
+            >
+              <option value="all">All</option>
+              <option value="accept">Accept</option>
+              <option value="reject">Reject</option>
+              <option value="none">No Remark</option>
+            </select>
+          </div>
+
           {/* Date Range Filter */}
           <div>
             <label
@@ -1018,11 +1057,12 @@ const CallLogs = () => {
           </div>
 
           {/* Clear Filters */}
-          {(selectedDate || filter !== 'all') && (
+          {(selectedDate || filter !== 'all' || remarkFilter !== 'all') && (
             <div style={{ display: 'flex', alignItems: 'end' }}>
               <button
                 onClick={() => {
                   setFilter('all');
+                  setRemarkFilter('all');
                   clearDateFilter();
                 }}
                 style={{
@@ -1047,7 +1087,7 @@ const CallLogs = () => {
         </div>
 
         {/* Active Filters Display */}
-        {(selectedDate || filter !== 'all') && (
+        {(selectedDate || filter !== 'all' || remarkFilter !== 'all') && (
           <div
             style={{
               marginTop: '16px',
@@ -1077,6 +1117,20 @@ const CallLogs = () => {
                 }}
               >
                 Status: {filter}
+              </span>
+            )}
+            {remarkFilter !== 'all' && (
+              <span
+                style={{
+                  backgroundColor: '#8b5cf6',
+                  color: 'white',
+                  padding: '4px 8px',
+                  borderRadius: '4px',
+                  fontSize: '12px',
+                  fontWeight: '500',
+                }}
+              >
+                Remark: {remarkFilter === 'accept' ? 'Accept' : remarkFilter === 'reject' ? 'Reject' : 'No Remark'}
               </span>
             )}
             {selectedDate && (

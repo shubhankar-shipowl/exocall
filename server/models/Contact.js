@@ -39,6 +39,11 @@ const Contact = sequelize.define(
       allowNull: false,
       defaultValue: 'Not Called',
     },
+    status_override: {
+      type: DataTypes.STRING(50),
+      allowNull: true,
+      comment: 'Manual status override value (null if using API status)',
+    },
     attempts: {
       type: DataTypes.INTEGER,
       allowNull: false,

@@ -206,10 +206,16 @@ const handleExotelWebhook = async (req, res) => {
     }
 
     // Update contact record
+    // If there's a status_override, preserve it and keep status as override value
+    // If no override, update status from webhook
     const updateData = {
-      status: contactStatus,
       last_attempt: new Date(),
     };
+    
+    // Only update status if there's no manual override
+    if (!contact.status_override) {
+      updateData.status = contactStatus;
+    }
 
     // Only increment attempts for final statuses (not "In Progress" or "Initiated")
     if (contactStatus !== 'In Progress' && contactStatus !== 'Initiated') {

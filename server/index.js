@@ -144,6 +144,7 @@ const startServer = async () => {
     const hasStore = columns.some((c) => c.Field === 'store');
     const hasAgentNotes = columns.some((c) => c.Field === 'agent_notes');
     const hasRemark = columns.some((c) => c.Field === 'remark');
+    const hasStatusOverride = columns.some((c) => c.Field === 'status_override');
 
     if (!hasProductName) {
       console.log('⚠️  Adding product_name column...');
@@ -199,6 +200,14 @@ const startServer = async () => {
         'ALTER TABLE contacts ADD COLUMN remark VARCHAR(50) NULL',
       );
       console.log('✅ Added remark');
+    }
+
+    if (!hasStatusOverride) {
+      console.log('⚠️  Adding status_override column...');
+      await sequelize.query(
+        'ALTER TABLE contacts ADD COLUMN status_override VARCHAR(50) NULL AFTER status',
+      );
+      console.log('✅ Added status_override');
     }
 
     // Verify call_logs table schema

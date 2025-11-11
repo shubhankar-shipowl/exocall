@@ -61,25 +61,35 @@ const setStatusOverride = async (req, res) => {
     const { status } = req.body;
     const contactId = req.params.id;
 
-    if (!status || typeof status !== 'string') {
-      return res.status(400).json({ error: 'status is required' });
-    }
-
     const contact = await Contact.findByPk(contactId);
     if (!contact) {
       return res.status(404).json({ error: 'Contact not found' });
     }
 
-    await contact.update({ status });
+    // If status is provided and not empty, set override
+    // If status is empty string or null, clear override (set to null)
+    if (status && typeof status === 'string' && status.trim() !== '') {
+      // Set override and update status
+      await contact.update({ 
+        status_override: status,
+        status: status 
+      });
 
-    // Update most recent call log for this contact if any
-    const lastLog = await CallLog.findOne({
-      where: { contact_id: contact.id },
-      order: [['createdAt', 'DESC']],
-    });
-    if (lastLog) {
-      await lastLog.update({ status });
+      // Update most recent call log for this contact if any
+      const lastLog = await CallLog.findOne({
+        where: { contact_id: contact.id },
+        order: [['createdAt', 'DESC']],
+      });
+      if (lastLog) {
+        await lastLog.update({ status });
+      }
+    } else {
+      // Clear override (set to null), but keep current status
+      await contact.update({ status_override: null });
     }
+
+    // Reload contact to get updated data
+    await contact.reload();
 
     res.json({ success: true, contact });
   } catch (error) {

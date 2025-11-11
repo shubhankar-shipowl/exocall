@@ -104,18 +104,7 @@ const CallTable = () => {
   const [itemsPerPage, setItemsPerPage] = useState(10);
   // Per-row manual status override - initialize synchronously from localStorage
   // This ensures overrides are available before first render
-  const [statusOverrideById, setStatusOverrideById] = useState(() => {
-    try {
-      const stored = localStorage.getItem('statusOverrides');
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        if (parsed && typeof parsed === 'object') {
-          return parsed;
-        }
-      }
-    } catch (_) {}
-    return {};
-  });
+  const [statusOverrideById, setStatusOverrideById] = useState({});
   const [pendingOverrideById, setPendingOverrideById] = useState({});
   const [openOverrideId, setOpenOverrideId] = useState(null);
   const [overrideMenuPos, setOverrideMenuPos] = useState({ top: 0, left: 0 });
@@ -219,44 +208,15 @@ const CallTable = () => {
 
       if (response.ok) {
         const data = await response.json();
-        // Always load and merge overrides from localStorage when fetching contacts
-        // This ensures overrides persist across refreshes and section changes
-        try {
-          const stored = localStorage.getItem('statusOverrides');
-          if (stored) {
-            const parsed = JSON.parse(stored);
-            if (parsed && typeof parsed === 'object') {
-              // Merge with existing overrides, prioritizing localStorage
-              setStatusOverrideById((prev) => {
-                const merged = { ...prev, ...parsed };
-                // If localStorage has an override that doesn't match API status, sync to backend
-                // This handles cases where webhooks might have overwritten our override
-                Object.keys(parsed).forEach((contactId) => {
-                  const overrideStatus = parsed[contactId];
-                  if (overrideStatus) {
-                    const contact = data.find(
-                      (c) => String(c.id) === String(contactId),
-                    );
-                    if (contact && contact.status !== overrideStatus) {
-                      // Silently sync override to backend (non-blocking)
-                      fetch(`/api/contacts/${contactId}/status-override`, {
-                        method: 'PUT',
-                        headers: {
-                          'Content-Type': 'application/json',
-                          Authorization: `Bearer ${localStorage.getItem(
-                            'token',
-                          )}`,
-                        },
-                        body: JSON.stringify({ status: overrideStatus }),
-                      }).catch(() => {});
-                    }
-                  }
-                });
-                return merged;
-              });
-            }
+        // Build override map from status_override field in contacts data
+        // This ensures overrides are synced across all systems using the same database
+        const overrideMap = {};
+        data.forEach((contact) => {
+          if (contact.status_override) {
+            overrideMap[contact.id] = contact.status_override;
           }
-        } catch (_) {}
+        });
+        setStatusOverrideById(overrideMap);
         console.log(
           '✅ [Frontend CallTable] - Successfully received contacts:',
           {
@@ -349,34 +309,8 @@ const CallTable = () => {
     };
   }, [openRemarkId]);
 
-  // Reload overrides from localStorage if it changes externally (e.g., another tab)
-  useEffect(() => {
-    const handleStorageChange = (e) => {
-      if (e.key === 'statusOverrides') {
-        try {
-          if (e.newValue) {
-            const parsed = JSON.parse(e.newValue);
-            if (parsed && typeof parsed === 'object') {
-              setStatusOverrideById(parsed);
-            }
-          } else {
-            setStatusOverrideById({});
-          }
-        } catch (_) {}
-      }
-    };
-    window.addEventListener('storage', handleStorageChange);
-    return () => window.removeEventListener('storage', handleStorageChange);
-  }, []);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(
-        'statusOverrides',
-        JSON.stringify(statusOverrideById),
-      );
-    } catch (_) {}
-  }, [statusOverrideById]);
+  // Note: Status overrides are now stored in the database (status_override field)
+  // and loaded from the API, so they sync across all systems automatically
 
   // Close date picker when clicking outside
   useEffect(() => {
@@ -2275,55 +2209,45 @@ const CallTable = () => {
                                   if (!val) {
                                     delete overrideMap[contact.id];
                                   }
-                                  setStatusOverrideById(overrideMap);
+                                  // Update backend first, then update local state
                                   try {
-                                    localStorage.setItem(
-                                      'statusOverrides',
-                                      JSON.stringify(overrideMap),
-                                    );
-                                  } catch (_) {}
-                                  // Only persist to backend if there's an actual override value
-                                  // If val is empty, user wants to use API status, so don't update backend
-                                  if (val) {
-                                    try {
-                                      const response = await fetch(
-                                        `/api/contacts/${contact.id}/status-override`,
-                                        {
-                                          method: 'PUT',
-                                          headers: {
-                                            'Content-Type': 'application/json',
-                                            Authorization: `Bearer ${localStorage.getItem(
-                                              'token',
-                                            )}`,
-                                          },
-                                          body: JSON.stringify({
-                                            status: val,
-                                          }),
+                                    const response = await fetch(
+                                      `/api/contacts/${contact.id}/status-override`,
+                                      {
+                                        method: 'PUT',
+                                        headers: {
+                                          'Content-Type': 'application/json',
+                                          Authorization: `Bearer ${localStorage.getItem(
+                                            'token',
+                                          )}`,
                                         },
-                                      );
-                                      if (response.ok) {
-                                        toast.success(
-                                          'Status updated successfully',
-                                        );
-                                      } else {
-                                        const errorData = await response.json();
-                                        toast.error(
-                                          errorData.error ||
-                                            'Failed to update status',
-                                        );
-                                      }
-                                    } catch (error) {
-                                      console.error(
-                                        'Error updating status:',
-                                        error,
-                                      );
-                                      toast.error('Failed to update status');
-                                    }
-                                  } else {
-                                    // If clearing override, just show success
-                                    toast.success(
-                                      'Status updated successfully',
+                                        body: JSON.stringify({
+                                          status: val || null, // Send null to clear override
+                                        }),
+                                      },
                                     );
+                                    if (response.ok) {
+                                      const result = await response.json();
+                                      // Update local state from backend response
+                                      setStatusOverrideById(overrideMap);
+                                      toast.success(
+                                        'Status updated successfully',
+                                      );
+                                      // Refresh contacts to get latest data
+                                      fetchContacts();
+                                    } else {
+                                      const errorData = await response.json();
+                                      toast.error(
+                                        errorData.error ||
+                                          'Failed to update status',
+                                      );
+                                    }
+                                  } catch (error) {
+                                    console.error(
+                                      'Error updating status:',
+                                      error,
+                                    );
+                                    toast.error('Failed to update status');
                                   }
                                   setOpenOverrideId(null);
                                 }}

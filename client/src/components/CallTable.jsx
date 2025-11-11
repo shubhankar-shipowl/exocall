@@ -1979,7 +1979,7 @@ const CallTable = () => {
             }}
           >
           <table
-            className="w-full min-w-[800px] divide-y divide-gray-200"
+            className="w-full min-w-[900px] divide-y divide-gray-200"
           >
             <thead className="bg-gray-50">
               <tr>
@@ -1997,6 +1997,9 @@ const CallTable = () => {
                 </th>
                 <th className="px-2 sm:px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden md:table-cell min-w-[150px]">
                   Address
+                </th>
+                <th className="px-2 sm:px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden md:table-cell min-w-[100px]">
+                  State
                 </th>
                 <th className="px-2 sm:px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden lg:table-cell min-w-[100px]">
                   Time
@@ -2083,6 +2086,20 @@ const CallTable = () => {
                         title={contact.address}
                       >
                         {contact.address}
+                      </div>
+                    ) : (
+                      <span className="text-xs sm:text-sm text-gray-400">-</span>
+                    )}
+                  </td>
+
+                  {/* State */}
+                  <td className="px-2 sm:px-4 py-3 sm:py-4 hidden md:table-cell">
+                    {contact.state ? (
+                      <div
+                        className="text-xs sm:text-sm text-gray-700 truncate"
+                        title={contact.state}
+                      >
+                        {contact.state}
                       </div>
                     ) : (
                       <span className="text-xs sm:text-sm text-gray-400">-</span>

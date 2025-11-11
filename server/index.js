@@ -140,6 +140,7 @@ const startServer = async () => {
     const hasProductName = columns.some((c) => c.Field === 'product_name');
     const hasPrice = columns.some((c) => c.Field === 'price');
     const hasAddress = columns.some((c) => c.Field === 'address');
+    const hasState = columns.some((c) => c.Field === 'state');
     const hasStore = columns.some((c) => c.Field === 'store');
     const hasAgentNotes = columns.some((c) => c.Field === 'agent_notes');
     const hasRemark = columns.some((c) => c.Field === 'remark');
@@ -166,6 +167,14 @@ const startServer = async () => {
         'ALTER TABLE contacts ADD COLUMN address TEXT NULL',
       );
       console.log('✅ Added address');
+    }
+
+    if (!hasState) {
+      console.log('⚠️  Adding state column...');
+      await sequelize.query(
+        'ALTER TABLE contacts ADD COLUMN state VARCHAR(255) NULL AFTER address',
+      );
+      console.log('✅ Added state');
     }
 
     if (!hasStore) {

@@ -74,6 +74,11 @@ const Contact = sequelize.define(
       type: DataTypes.TEXT,
       allowNull: true,
     },
+    state: {
+      type: DataTypes.STRING(255),
+      allowNull: true,
+      comment: 'State from Consignee State column',
+    },
     store: {
       type: DataTypes.STRING(255),
       allowNull: true,

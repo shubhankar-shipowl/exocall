@@ -98,6 +98,25 @@ router.post(
         return res.status(400).json({ error: "Excel file is empty" });
       }
 
+      // Helper function to find column value case-insensitively
+      const getColumnValue = (row, possibleNames) => {
+        const rowKeys = Object.keys(row);
+        for (const possibleName of possibleNames) {
+          // Try exact match first
+          if (row[possibleName] !== undefined) {
+            return row[possibleName];
+          }
+          // Try case-insensitive match
+          const foundKey = rowKeys.find(
+            (key) => key.toLowerCase() === possibleName.toLowerCase()
+          );
+          if (foundKey) {
+            return row[foundKey];
+          }
+        }
+        return null;
+      };
+
       // Map Excel columns to our contact fields
       const contacts = [];
       const errors = [];
@@ -106,17 +125,19 @@ router.post(
       jsonData.forEach((row, index) => {
         try {
           // Extract fields based on the actual Excel structure from Call confirmation sheet
-          const name = row["Consignee Name *"];
-          const contactNo = row["Consignee Mobile *"];
-          const productName = row["Product Name *"];
-          const quantity = row["Product Qty *"];
-          const price = row["Product Value *"];
-          const orderNumber = row["Order Number *"];
-          const address1 = row["Consignee Address 1 *"];
-          const address2 = row["Consignee Address 2"] || null; // May not exist in this file
-          const pincode = row["Pincode *"];
-          const remark = row["REMARK"];
-          const store = row["Store"] || row["store"] || null; // Store field
+          // Use case-insensitive matching for all columns
+          const name = getColumnValue(row, ["Consignee Name *", "Consignee Name"]);
+          const contactNo = getColumnValue(row, ["Consignee Mobile *", "Consignee Mobile"]);
+          const productName = getColumnValue(row, ["Product Name *", "Product Name"]);
+          const quantity = getColumnValue(row, ["Product Qty *", "Product Qty"]);
+          const price = getColumnValue(row, ["Product Value *", "Product VALUE *", "Product Value", "Product VALUE"]);
+          const orderNumber = getColumnValue(row, ["Order Number *", "Order Number"]);
+          const address1 = getColumnValue(row, ["Consignee Address 1 *", "Consignee Address 1"]);
+          const address2 = getColumnValue(row, ["Consignee Address 2 *", "Consignee Address 2"]) || null;
+          const pincode = getColumnValue(row, ["Pincode *", "Pincode"]);
+          const state = getColumnValue(row, ["Consignee State", "Consignee STATE", "State"]) || null;
+          const remark = getColumnValue(row, ["REMARK", "Remark", "remark"]) || null;
+          const store = getColumnValue(row, ["Store", "store", "STORE"]) || null;
 
           // Combine address 1 and 2
           const address = [address1, address2]
@@ -183,6 +204,7 @@ router.post(
             product_name: productName || null,
             price: price ? price.toString() : null,
             address: address || null,
+            state: state ? state.toString().trim() : null,
             store: store ? store.toString().trim() : null,
             agent_notes: `Imported from Excel. Order: ${
               orderNumber || "N/A"
@@ -190,7 +212,9 @@ router.post(
               quantity || "N/A"
             }, Value: ₹${price || "N/A"}, Address: ${
               address || "N/A"
-            }, Pincode: ${pincode || "N/A"}, Store: ${
+            }, Pincode: ${pincode || "N/A"}, State: ${
+              state || "N/A"
+            }, Store: ${
               store || "N/A"
             }, Remark: ${remark || "N/A"}`,
           };
@@ -247,8 +271,8 @@ router.post(
               await sequelize.query(
                 `
                 INSERT INTO contacts 
-                (name, phone, message, status, attempts, agent_notes, product_name, price, address, store, createdAt, updatedAt, last_attempt) 
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (name, phone, message, status, attempts, agent_notes, product_name, price, address, state, store, createdAt, updatedAt, last_attempt) 
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
               `,
                 {
                   replacements: [
@@ -261,6 +285,7 @@ router.post(
                     c.product_name || null,
                     c.price || null,
                     c.address || null,
+                    c.state || null,
                     c.store || null,
                     now,
                     now,
@@ -297,8 +322,8 @@ router.post(
                   await sequelize.query(
                     `
                     INSERT INTO contacts 
-                    (name, phone, message, status, attempts, agent_notes, product_name, price, address, store, createdAt, updatedAt, last_attempt) 
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    (name, phone, message, status, attempts, agent_notes, product_name, price, address, state, store, createdAt, updatedAt, last_attempt) 
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                   `,
                     {
                       replacements: [
@@ -311,6 +336,7 @@ router.post(
                         c.product_name || null,
                         c.price || null,
                         c.address || null,
+                        c.state || null,
                         c.store || null,
                         now,
                         now,

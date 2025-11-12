@@ -178,10 +178,11 @@ const CallLogs = () => {
     const statusMatch =
       filter === 'all' || (call.status || '').toLowerCase() === filter;
     
-    const remarkMatch =
+            const remarkMatch =
       remarkFilter === 'all' || 
       (remarkFilter === 'accept' && call.remark === 'accept') ||
       (remarkFilter === 'reject' && call.remark === 'reject') ||
+      (remarkFilter === 'pending' && call.remark === 'pending') ||
       (remarkFilter === 'none' && (!call.remark || call.remark === ''));
 
     const storeMatch =
@@ -687,6 +688,7 @@ const CallLogs = () => {
               <option value="all">All</option>
               <option value="accept">Accept</option>
               <option value="reject">Reject</option>
+              <option value="pending">Pending</option>
               <option value="none">No Remark</option>
             </select>
           </div>
@@ -1185,7 +1187,7 @@ const CallLogs = () => {
                   fontWeight: '500',
                 }}
               >
-                Remark: {remarkFilter === 'accept' ? 'Accept' : remarkFilter === 'reject' ? 'Reject' : 'No Remark'}
+                Remark: {remarkFilter === 'accept' ? 'Accept' : remarkFilter === 'reject' ? 'Reject' : remarkFilter === 'pending' ? 'Pending' : 'No Remark'}
               </span>
             )}
             {storeFilter !== 'all' && (
@@ -1390,6 +1392,8 @@ const CallLogs = () => {
                               ? 'bg-green-500'
                               : call.remark === 'reject'
                               ? 'bg-red-500'
+                              : call.remark === 'pending'
+                              ? 'bg-yellow-500'
                               : 'bg-gray-300'
                           }`}
                         />
@@ -1398,6 +1402,8 @@ const CallLogs = () => {
                             ? 'Accept'
                             : call.remark === 'reject'
                             ? 'Reject'
+                            : call.remark === 'pending'
+                            ? 'Pending'
                             : '-'}
                         </span>
                       </div>

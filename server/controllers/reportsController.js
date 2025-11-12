@@ -246,21 +246,73 @@ const exportCallsToExcel = async (req, res) => {
     }
 
     // Build include clause with store filter if provided
+    // Use required: false to ensure we get call logs even if contact doesn't match store filter
+    // We'll filter by store later to ensure accuracy
     const includeClause = [
       {
         model: Contact,
         as: 'contact',
-        attributes: ['name', 'phone', 'message', 'remark', 'store'],
-        ...(store && store !== 'all' ? { where: { store: store } } : {}),
+        attributes: ['name', 'phone', 'message', 'remark', 'store', 'agent_notes'],
+        required: false, // LEFT JOIN to include all call logs
       },
     ];
 
-    // Get call logs with contact information
-    const callLogs = await CallLog.findAll({
+    // Get all call logs with contact information, ordered by most recent first
+    const allCallLogs = await CallLog.findAll({
       where: whereClause,
       include: includeClause,
       order: [['createdAt', 'DESC']],
     });
+
+    // Filter call logs by store if store filter is provided, and get only latest per contact
+    const seenContactIds = new Set();
+    const callLogs = [];
+    for (const log of allCallLogs) {
+      // Skip if no contact_id
+      if (!log.contact_id) continue;
+      
+      // If store filter is applied, check if contact matches store
+      if (store && store !== 'all') {
+        if (!log.contact || log.contact.store !== store) {
+          continue; // Skip this call log if contact doesn't match store
+        }
+      }
+      
+      // Keep only the latest call log for each contact
+      if (!seenContactIds.has(log.contact_id)) {
+        seenContactIds.add(log.contact_id);
+        callLogs.push(log);
+      }
+    }
+
+    // Also get "Not Called" contacts for the store if store filter is provided
+    // IMPORTANT: Get ALL "Not Called" contacts for the store, regardless of date filters
+    // Date filters only apply to call logs, not to "Not Called" contacts
+    let notCalledContacts = [];
+    if (store && store !== 'all') {
+      // Get ALL contacts with status "Not Called" for this store
+      // Don't apply date filters here - we want all "Not Called" contacts for the store
+      const notCalledContactsList = await Contact.findAll({
+        where: {
+          store: store,
+          status: 'Not Called',
+        },
+        attributes: ['id', 'name', 'phone', 'message', 'remark', 'store', 'agent_notes', 'createdAt'],
+      });
+
+      // Get contact IDs that already have call logs (to avoid duplicates)
+      const contactIdsWithCallLogs = new Set(
+        callLogs
+          .map((log) => log.contact_id)
+          .filter((id) => id !== null && id !== undefined)
+      );
+
+      // Filter out contacts that already have call logs
+      // This ensures we only include contacts that truly have no call logs
+      notCalledContacts = notCalledContactsList.filter(
+        (contact) => !contactIdsWithCallLogs.has(contact.id)
+      );
+    }
 
     // Helper function to parse message
     const parseMessage = (message) => {
@@ -279,8 +331,36 @@ const exportCallsToExcel = async (req, res) => {
       return data;
     };
 
-    // Prepare data for export
-    const exportData = callLogs.map((log, index) => {
+    // Helper function to extract only the note text after timestamp from agent_notes
+    const extractNoteText = (agentNotes) => {
+      if (!agentNotes) return '';
+      
+      // Pattern to match timestamp like [11/12/2025, 9:40:43 AM] or similar formats
+      // Matches: [date, time AM/PM] followed by note text
+      const timestampPattern = /\[\d{1,2}\/\d{1,2}\/\d{4},?\s+\d{1,2}:\d{2}:\d{2}\s+(AM|PM)\]\s*/gi;
+      
+      // Find all matches to get the last one
+      let match;
+      let lastMatchIndex = -1;
+      let lastMatchLength = 0;
+      
+      while ((match = timestampPattern.exec(agentNotes)) !== null) {
+        lastMatchIndex = match.index;
+        lastMatchLength = match[0].length;
+      }
+      
+      if (lastMatchIndex > -1) {
+        // Extract text after the last timestamp
+        const noteText = agentNotes.substring(lastMatchIndex + lastMatchLength).trim();
+        return noteText;
+      }
+      
+      // If no timestamp pattern found, return empty string
+      return '';
+    };
+
+    // Prepare data for export from call logs
+    const callLogData = callLogs.map((log) => {
       const messageData = parseMessage(log.contact?.message);
 
       // Format duration
@@ -293,7 +373,7 @@ const exportCallsToExcel = async (req, res) => {
       const recordingURL = hasDuration ? log.recording_url || 'N/A' : 'N/A';
 
       return {
-        'S.No': index + 1,
+        'S.No': null, // Will be set later
         'Contact Name': log.contact?.name || 'N/A',
         Phone: log.contact?.phone || 'N/A',
         Order: messageData.Order || 'N/A',
@@ -316,8 +396,47 @@ const exportCallsToExcel = async (req, res) => {
           minute: '2-digit',
           second: '2-digit',
         }),
+        Description: extractNoteText(log.contact?.agent_notes) || '',
       };
     });
+
+    // Prepare data for export from "Not Called" contacts
+    const notCalledData = notCalledContacts.map((contact) => {
+      const messageData = parseMessage(contact.message);
+
+      return {
+        'S.No': null, // Will be set later
+        'Contact Name': contact.name || 'N/A',
+        Phone: contact.phone || 'N/A',
+        Order: messageData.Order || 'N/A',
+        Product: messageData.Product || 'N/A',
+        Qty: messageData.Qty || 'N/A',
+        Value: messageData.Value || 'N/A',
+        Address: messageData.Address || 'N/A',
+        Pincode: messageData.Pincode || 'N/A',
+        'Attempt No': 0,
+        Status: 'Not Called',
+        'Duration (formatted)': '0:00',
+        'Recording URL': 'N/A',
+        Remark: contact.remark || '-',
+        'Call Date': new Date(contact.createdAt).toLocaleString('en-US', {
+          timeZone: 'Asia/Kolkata',
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit',
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit',
+        }),
+        Description: extractNoteText(contact.agent_notes) || '',
+      };
+    });
+
+    // Combine both datasets and assign serial numbers
+    const exportData = [...callLogData, ...notCalledData].map((item, index) => ({
+      ...item,
+      'S.No': index + 1,
+    }));
 
     // Create workbook
     const workbook = XLSX.utils.book_new();
@@ -340,6 +459,7 @@ const exportCallsToExcel = async (req, res) => {
       { wch: 40 }, // Recording URL
       { wch: 12 }, // Remark
       { wch: 25 }, // Call Date
+      { wch: 40 }, // Description
     ];
     worksheet['!cols'] = columnWidths;
 

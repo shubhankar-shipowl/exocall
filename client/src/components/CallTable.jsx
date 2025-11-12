@@ -402,6 +402,12 @@ const CallTable = () => {
     return true;
   });
 
+  // Calculate total contacts for the selected store only (regardless of other filters)
+  // This is used to show the total count when a store is selected
+  const totalContactsForStore = storeFilter !== 'all' 
+    ? contacts.filter((contact) => contact.store === storeFilter).length
+    : baseFilteredContacts.length;
+
   // Pagination logic
   const totalPages = Math.ceil(filteredContacts.length / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
@@ -1422,7 +1428,7 @@ const CallTable = () => {
               Live contact status and calling interface •{' '}
               {filteredContacts.length} contacts
               {(dateFilter || storeFilter !== 'all' || productFilter !== 'all' || statusFilter !== 'all') &&
-                ` (filtered from ${baseFilteredContacts.length} total)`}
+                ` (filtered from ${totalContactsForStore} total)`}
             </p>
           </div>
         </div>
@@ -2366,6 +2372,8 @@ const CallTable = () => {
                               ? 'bg-green-500'
                               : contact.remark === 'reject'
                               ? 'bg-red-500'
+                              : contact.remark === 'pending'
+                              ? 'bg-yellow-500'
                               : 'bg-gray-300'
                           }`}
                         />
@@ -2374,6 +2382,8 @@ const CallTable = () => {
                             ? 'Accept'
                             : contact.remark === 'reject'
                             ? 'Reject'
+                            : contact.remark === 'pending'
+                            ? 'Pending'
                             : '-'}
                         </span>
                         <svg
@@ -2441,6 +2451,28 @@ const CallTable = () => {
                               <span className="flex-1 truncate">Accept</span>
                               {(pendingRemarkById[contact.id] || '') ===
                                 'accept' && (
+                                <CheckCircle className="w-3 h-3 text-green-500" />
+                              )}
+                            </button>
+                            <button
+                              onClick={() => {
+                                setPendingRemarkById((prev) => ({
+                                  ...prev,
+                                  [contact.id]: 'pending',
+                                }));
+                              }}
+                              className={`w-full px-3 py-2 text-left text-xs flex items-center gap-2 hover:bg-gray-50 ${
+                                (pendingRemarkById[contact.id] || '') ===
+                                'pending'
+                                  ? 'bg-gray-100'
+                                  : ''
+                              }`}
+                            >
+                              <span className="inline-block w-2 h-2 rounded-full bg-yellow-500" />
+                              <Clock className="w-3 h-3 text-yellow-600" />
+                              <span className="flex-1 truncate">Pending</span>
+                              {(pendingRemarkById[contact.id] || '') ===
+                                'pending' && (
                                 <CheckCircle className="w-3 h-3 text-green-500" />
                               )}
                             </button>

@@ -1026,7 +1026,7 @@ const Reports = () => {
                             margin: "0 0 4px 0",
                           }}
                         >
-                          {log.Contact?.name || "Unknown"}
+                          {log.contact?.name || "Unknown"}
                         </p>
                         <p
                           style={{
@@ -1035,7 +1035,7 @@ const Reports = () => {
                             margin: 0,
                           }}
                         >
-                          {log.Contact?.phone || "N/A"}
+                          {log.contact?.phone || "N/A"}
                         </p>
                       </div>
                     </td>

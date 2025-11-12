@@ -327,14 +327,30 @@ const CallTable = () => {
   }, [showDatePicker]);
 
   // Filter contacts based on date (using createdAt - upload date)
-  // Get unique stores from contacts
+  // First, filter contacts by date to get the base set for dropdowns
+  const dateFilteredContacts = contacts.filter((contact) => {
+    if (dateFilter) {
+      const contactDate = contact.createdAt || contact.created_at;
+      if (!isDateInRange(contactDate, dateFilter)) return false;
+    }
+    return true;
+  });
+
+  // Get unique stores from contacts filtered by date
   const uniqueStores = [
-    ...new Set(contacts.filter((c) => c.store).map((c) => c.store)),
+    ...new Set(dateFilteredContacts.filter((c) => c.store).map((c) => c.store)),
   ].sort();
 
-  // Get unique product names from contacts
+  // Get unique product names from contacts filtered by date and store
+  const storeAndDateFilteredContacts = dateFilteredContacts.filter((contact) => {
+    if (storeFilter !== 'all') {
+      if (!contact.store || contact.store !== storeFilter) return false;
+    }
+    return true;
+  });
+
   const uniqueProducts = [
-    ...new Set(contacts.filter((c) => c.product_name).map((c) => c.product_name)),
+    ...new Set(storeAndDateFilteredContacts.filter((c) => c.product_name).map((c) => c.product_name)),
   ].sort();
 
   const filteredContacts = contacts.filter((contact) => {
@@ -374,6 +390,20 @@ const CallTable = () => {
   useEffect(() => {
     setCurrentPage(1);
   }, [dateFilter, dateRange, storeFilter, productFilter, statusFilter]);
+
+  // Reset store filter if selected store is not available for the selected date
+  useEffect(() => {
+    if (storeFilter !== 'all' && !uniqueStores.includes(storeFilter)) {
+      setStoreFilter('all');
+    }
+  }, [dateFilter, uniqueStores, storeFilter]);
+
+  // Reset product filter if selected product is not available for the selected store/date
+  useEffect(() => {
+    if (productFilter !== 'all' && !uniqueProducts.includes(productFilter)) {
+      setProductFilter('all');
+    }
+  }, [storeFilter, dateFilter, uniqueProducts, productFilter]);
 
   // Find the scrollable parent container (main element with overflow-y: auto)
   const getScrollableContainer = () => {

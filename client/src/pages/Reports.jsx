@@ -39,12 +39,14 @@ const Reports = () => {
     startDate: "",
     endDate: "",
     status: "all",
+    store: "all",
     page: 1,
-    limit: 50,
+    limit: 1000, // Increased default limit to show more historical data
   });
   const [pagination, setPagination] = useState({});
   const [showFilters, setShowFilters] = useState(false);
   const [chartType, setChartType] = useState("bar"); // bar, pie, line
+  const [availableStores, setAvailableStores] = useState([]);
 
   // Fetch statistics
   const fetchStatistics = async () => {
@@ -54,6 +56,8 @@ const Reports = () => {
       if (filters.endDate) queryParams.append("endDate", filters.endDate);
       if (filters.status !== "all")
         queryParams.append("status", filters.status);
+      if (filters.store !== "all")
+        queryParams.append("store", filters.store);
 
       const response = await fetch(`/api/reports/statistics?${queryParams}`, {
         headers: {
@@ -112,6 +116,16 @@ const Reports = () => {
         const data = await response.json();
         setCallLogs(data.data.callLogs);
         setPagination(data.data.pagination);
+        
+        // Extract unique stores from call logs
+        const stores = [
+          ...new Set(
+            data.data.callLogs
+              .map((log) => log.contact?.store)
+              .filter((store) => store && store.trim() !== "")
+          ),
+        ].sort();
+        setAvailableStores(stores);
       } else {
         console.error(
           "Failed to fetch call logs:",
@@ -138,6 +152,8 @@ const Reports = () => {
       if (filters.endDate) queryParams.append("endDate", filters.endDate);
       if (filters.status !== "all")
         queryParams.append("status", filters.status);
+      if (filters.store !== "all")
+        queryParams.append("store", filters.store);
       queryParams.append("format", format);
 
       const response = await fetch(`/api/reports/export?${queryParams}`, {
@@ -191,8 +207,9 @@ const Reports = () => {
       startDate: "",
       endDate: "",
       status: "all",
+      store: "all",
       page: 1,
-      limit: 50,
+      limit: 1000, // Increased default limit to show more historical data
     });
   };
 
@@ -475,6 +492,39 @@ const Reports = () => {
                 <option value="In Progress">In Progress</option>
                 <option value="Completed">Completed</option>
                 <option value="Failed">Failed</option>
+              </select>
+            </div>
+
+            <div>
+              <label
+                style={{
+                  display: "block",
+                  fontSize: "14px",
+                  fontWeight: "500",
+                  color: "#374151",
+                  marginBottom: "6px",
+                }}
+              >
+                Store
+              </label>
+              <select
+                value={filters.store}
+                onChange={(e) => handleFilterChange("store", e.target.value)}
+                style={{
+                  width: "100%",
+                  padding: "8px 12px",
+                  border: "1px solid #d1d5db",
+                  borderRadius: "6px",
+                  fontSize: "14px",
+                  outline: "none",
+                }}
+              >
+                <option value="all">All Stores</option>
+                {availableStores.map((store) => (
+                  <option key={store} value={store}>
+                    {store}
+                  </option>
+                ))}
               </select>
             </div>
 

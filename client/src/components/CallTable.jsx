@@ -380,6 +380,28 @@ const CallTable = () => {
     return true;
   });
 
+  // Calculate total contacts count based on active filters (excluding status filter)
+  // This gives us the base count for store/date/product filters
+  const baseFilteredContacts = contacts.filter((contact) => {
+    // Date filter
+    if (dateFilter) {
+      const contactDate = contact.createdAt || contact.created_at;
+      if (!isDateInRange(contactDate, dateFilter)) return false;
+    }
+
+    // Store filter
+    if (storeFilter !== 'all') {
+      if (!contact.store || contact.store !== storeFilter) return false;
+    }
+
+    // Product Name filter
+    if (productFilter !== 'all') {
+      if (!contact.product_name || contact.product_name !== productFilter) return false;
+    }
+
+    return true;
+  });
+
   // Pagination logic
   const totalPages = Math.ceil(filteredContacts.length / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
@@ -1400,7 +1422,7 @@ const CallTable = () => {
               Live contact status and calling interface •{' '}
               {filteredContacts.length} contacts
               {(dateFilter || storeFilter !== 'all' || productFilter !== 'all' || statusFilter !== 'all') &&
-                ` (filtered from ${contacts.length} total)`}
+                ` (filtered from ${baseFilteredContacts.length} total)`}
             </p>
           </div>
         </div>

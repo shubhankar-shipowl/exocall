@@ -7,21 +7,49 @@ const axios = require('axios');
 // Get call statistics for reports
 const getCallStatistics = async (req, res) => {
   try {
-    const { startDate, endDate, status, agentId } = req.query;
+    const { startDate, endDate, status, store, agentId } = req.query;
 
-    // Build where clause for date range
+    // Build where clause for date range with proper timezone handling
+    // Helper function to convert IST date string to UTC Date object
+    // IST is UTC+5:30, so midnight IST = 18:30 UTC of previous day
+    const istToUTC = (dateString, isEndOfDay = false) => {
+      // Parse date string (format: YYYY-MM-DD)
+      const [year, month, day] = dateString.split('-').map(Number);
+      // Create UTC date for the specified IST time
+      // For start of day: 00:00:00 IST = 18:30:00 UTC of previous day
+      // For end of day: 23:59:59 IST = 18:29:59 UTC of same day
+      if (isEndOfDay) {
+        // End of day: 23:59:59.999 IST
+        // IST is UTC+5:30, so 23:59:59.999 IST = 18:29:59.999 UTC on the same day
+        // To ensure we capture all records, we'll use 23:59:59.999 of the day in UTC terms
+        // which means: day at 18:29:59.999 UTC, but to be safe, use next day 05:29:59.999
+        // Actually: 23:59:59.999 IST = 18:29:59.999 UTC same day
+        return new Date(Date.UTC(year, month - 1, day, 18, 29, 59, 999));
+      } else {
+        // Start of day: 00:00:00 IST = 18:30:00 UTC of previous day
+        const date = new Date(Date.UTC(year, month - 1, day, 18, 30, 0, 0));
+        // Subtract one day to get previous day
+        date.setUTCDate(date.getUTCDate() - 1);
+        return date;
+      }
+    };
+
     let whereClause = {};
     if (startDate && endDate) {
+      const startUTC = istToUTC(startDate, false);
+      const endUTC = istToUTC(endDate, true);
       whereClause.createdAt = {
-        [Op.between]: [new Date(startDate), new Date(endDate)],
+        [Op.between]: [startUTC, endUTC],
       };
     } else if (startDate) {
+      const startUTC = istToUTC(startDate, false);
       whereClause.createdAt = {
-        [Op.gte]: new Date(startDate),
+        [Op.gte]: startUTC,
       };
     } else if (endDate) {
+      const endUTC = istToUTC(endDate, true);
       whereClause.createdAt = {
-        [Op.lte]: new Date(endDate),
+        [Op.lte]: endUTC,
       };
     }
 
@@ -30,17 +58,33 @@ const getCallStatistics = async (req, res) => {
       whereClause.status = status;
     }
 
-    // Get total calls
-    const totalCalls = await CallLog.count({ where: whereClause });
+    // Build include clause for store filtering
+    const includeClause = store && store !== 'all' ? [
+      {
+        model: Contact,
+        as: 'contact',
+        attributes: [],
+        where: { store: store },
+        required: true,
+      },
+    ] : [];
+
+    // Get total calls (with store filter if provided)
+    const totalCalls = await CallLog.count({
+      where: whereClause,
+      include: includeClause,
+      distinct: true,
+    });
 
     // Get calls by status
     const callsByStatus = await CallLog.findAll({
       attributes: [
         'status',
-        [sequelize.fn('COUNT', sequelize.col('id')), 'count'],
+        [sequelize.fn('COUNT', sequelize.col('CallLog.id')), 'count'],
       ],
       where: whereClause,
-      group: ['status'],
+      include: includeClause,
+      group: ['CallLog.status'],
     });
 
     // Get success rate
@@ -49,6 +93,8 @@ const getCallStatistics = async (req, res) => {
         ...whereClause,
         status: 'Completed',
       },
+      include: includeClause,
+      distinct: true,
     });
 
     const successRate =
@@ -57,12 +103,13 @@ const getCallStatistics = async (req, res) => {
     // Get average duration
     const avgDurationResult = await CallLog.findOne({
       attributes: [
-        [sequelize.fn('AVG', sequelize.col('duration')), 'avgDuration'],
+        [sequelize.fn('AVG', sequelize.col('CallLog.duration')), 'avgDuration'],
       ],
       where: {
         ...whereClause,
         duration: { [Op.ne]: null },
       },
+      include: includeClause,
     });
 
     const avgDuration = avgDurationResult?.dataValues?.avgDuration || 0;
@@ -70,13 +117,14 @@ const getCallStatistics = async (req, res) => {
     // Get calls by day (for charts)
     const callsByDay = await CallLog.findAll({
       attributes: [
-        [sequelize.fn('DATE', sequelize.col('createdAt')), 'date'],
-        [sequelize.fn('COUNT', sequelize.col('id')), 'count'],
-        [sequelize.fn('AVG', sequelize.col('duration')), 'avgDuration'],
+        [sequelize.fn('DATE', sequelize.col('CallLog.createdAt')), 'date'],
+        [sequelize.fn('COUNT', sequelize.col('CallLog.id')), 'count'],
+        [sequelize.fn('AVG', sequelize.col('CallLog.duration')), 'avgDuration'],
       ],
       where: whereClause,
-      group: [sequelize.fn('DATE', sequelize.col('createdAt'))],
-      order: [[sequelize.fn('DATE', sequelize.col('createdAt')), 'ASC']],
+      include: includeClause,
+      group: [sequelize.fn('DATE', sequelize.col('CallLog.createdAt'))],
+      order: [[sequelize.fn('DATE', sequelize.col('CallLog.createdAt')), 'ASC']],
     });
 
     // Get top performing agents (if agentId filter is not applied)
@@ -97,16 +145,17 @@ const getCallStatistics = async (req, res) => {
           ],
         ],
         where: whereClause,
-        group: ['contact_id'],
-        order: [[sequelize.literal('successfulCalls'), 'DESC']],
-        limit: 10,
         include: [
           {
             model: Contact,
             as: 'contact',
             attributes: ['name', 'phone'],
+            ...(store && store !== 'all' ? { where: { store: store }, required: true } : {}),
           },
         ],
+        group: ['contact_id'],
+        order: [[sequelize.literal('successfulCalls'), 'DESC']],
+        limit: 10,
       });
     }
 
@@ -154,21 +203,41 @@ const getCallStatistics = async (req, res) => {
 // Export calls to Excel
 const exportCallsToExcel = async (req, res) => {
   try {
-    const { startDate, endDate, status, format = 'xlsx' } = req.query;
+    const { startDate, endDate, status, store, format = 'xlsx' } = req.query;
 
-    // Build where clause
+    // Build where clause with proper date range handling
     let whereClause = {};
     if (startDate && endDate) {
+      // Set startDate to beginning of day (00:00:00) in IST
+      const start = new Date(startDate);
+      start.setHours(0, 0, 0, 0);
+      // Convert to UTC for database comparison (IST is UTC+5:30)
+      const startUTC = new Date(start.getTime() - 5.5 * 60 * 60 * 1000);
+      
+      // Set endDate to end of day (23:59:59.999) in IST
+      const end = new Date(endDate);
+      end.setHours(23, 59, 59, 999);
+      // Convert to UTC for database comparison
+      const endUTC = new Date(end.getTime() - 5.5 * 60 * 60 * 1000);
+      
       whereClause.createdAt = {
-        [Op.between]: [new Date(startDate), new Date(endDate)],
+        [Op.between]: [startUTC, endUTC],
       };
     } else if (startDate) {
+      // Set startDate to beginning of day in IST
+      const start = new Date(startDate);
+      start.setHours(0, 0, 0, 0);
+      const startUTC = new Date(start.getTime() - 5.5 * 60 * 60 * 1000);
       whereClause.createdAt = {
-        [Op.gte]: new Date(startDate),
+        [Op.gte]: startUTC,
       };
     } else if (endDate) {
+      // Set endDate to end of day in IST
+      const end = new Date(endDate);
+      end.setHours(23, 59, 59, 999);
+      const endUTC = new Date(end.getTime() - 5.5 * 60 * 60 * 1000);
       whereClause.createdAt = {
-        [Op.lte]: new Date(endDate),
+        [Op.lte]: endUTC,
       };
     }
 
@@ -176,16 +245,20 @@ const exportCallsToExcel = async (req, res) => {
       whereClause.status = status;
     }
 
+    // Build include clause with store filter if provided
+    const includeClause = [
+      {
+        model: Contact,
+        as: 'contact',
+        attributes: ['name', 'phone', 'message', 'remark', 'store'],
+        ...(store && store !== 'all' ? { where: { store: store } } : {}),
+      },
+    ];
+
     // Get call logs with contact information
     const callLogs = await CallLog.findAll({
       where: whereClause,
-      include: [
-        {
-          model: Contact,
-          as: 'contact',
-          attributes: ['name', 'phone', 'message', 'remark'],
-        },
-      ],
+      include: includeClause,
       order: [['createdAt', 'DESC']],
     });
 
@@ -308,27 +381,52 @@ const getCallLogs = async (req, res) => {
       startDate,
       endDate,
       status,
+      store,
       page = 1,
-      limit = 50,
+      limit,
       sortBy = 'createdAt',
       sortOrder = 'DESC',
     } = req.query;
 
-    const offset = (page - 1) * limit;
+    // If no limit is specified, fetch all records (no pagination)
+    // Otherwise use the specified limit with pagination
+    const usePagination = limit !== undefined && limit !== null && limit !== '';
+    const limitValue = usePagination ? parseInt(limit) : null;
+    const offset = usePagination ? (page - 1) * limitValue : 0;
 
-    // Build where clause
+    // Build where clause with proper date range handling
     let whereClause = {};
     if (startDate && endDate) {
+      // Set startDate to beginning of day (00:00:00) in IST
+      const start = new Date(startDate);
+      start.setHours(0, 0, 0, 0);
+      // Convert to UTC for database comparison (IST is UTC+5:30)
+      const startUTC = new Date(start.getTime() - 5.5 * 60 * 60 * 1000);
+      
+      // Set endDate to end of day (23:59:59.999) in IST
+      const end = new Date(endDate);
+      end.setHours(23, 59, 59, 999);
+      // Convert to UTC for database comparison
+      const endUTC = new Date(end.getTime() - 5.5 * 60 * 60 * 1000);
+      
       whereClause.createdAt = {
-        [Op.between]: [new Date(startDate), new Date(endDate)],
+        [Op.between]: [startUTC, endUTC],
       };
     } else if (startDate) {
+      // Set startDate to beginning of day in IST
+      const start = new Date(startDate);
+      start.setHours(0, 0, 0, 0);
+      const startUTC = new Date(start.getTime() - 5.5 * 60 * 60 * 1000);
       whereClause.createdAt = {
-        [Op.gte]: new Date(startDate),
+        [Op.gte]: startUTC,
       };
     } else if (endDate) {
+      // Set endDate to end of day in IST
+      const end = new Date(endDate);
+      end.setHours(23, 59, 59, 999);
+      const endUTC = new Date(end.getTime() - 5.5 * 60 * 60 * 1000);
       whereClause.createdAt = {
-        [Op.lte]: new Date(endDate),
+        [Op.lte]: endUTC,
       };
     }
 
@@ -336,34 +434,45 @@ const getCallLogs = async (req, res) => {
       whereClause.status = status;
     }
 
-    // Get call logs with pagination
-    const { count, rows: callLogs } = await CallLog.findAndCountAll({
+    // Build include clause with store filter if provided
+    const includeClause = [
+      {
+        model: Contact,
+        as: 'contact',
+        attributes: [
+          'name',
+          'phone',
+          'message',
+          'agent_notes',
+          'product_name',
+          'price',
+          'address',
+          'remark',
+          'store',
+        ],
+        ...(store && store !== 'all' ? { where: { store: store }, required: true } : {}),
+      },
+    ];
+
+    // Get call logs with or without pagination
+    const queryOptions = {
       where: whereClause,
-      include: [
-        {
-          model: Contact,
-          as: 'contact',
-          attributes: [
-            'name',
-            'phone',
-            'message',
-            'agent_notes',
-            'product_name',
-            'price',
-            'address',
-            'remark',
-          ],
-        },
-      ],
+      include: includeClause,
       order: [[sortBy, sortOrder.toUpperCase()]],
-      limit: parseInt(limit),
-      offset: parseInt(offset),
-    });
+    };
+
+    // Only apply limit and offset if pagination is requested
+    if (usePagination) {
+      queryOptions.limit = limitValue;
+      queryOptions.offset = offset;
+    }
+
+    const { count, rows: callLogs } = await CallLog.findAndCountAll(queryOptions);
 
     // Calculate pagination info
-    const totalPages = Math.ceil(count / limit);
-    const hasNextPage = page < totalPages;
-    const hasPrevPage = page > 1;
+    const totalPages = usePagination ? Math.ceil(count / limitValue) : 1;
+    const hasNextPage = usePagination ? page < totalPages : false;
+    const hasPrevPage = usePagination ? page > 1 : false;
 
     res.json({
       success: true,
@@ -373,7 +482,7 @@ const getCallLogs = async (req, res) => {
           currentPage: parseInt(page),
           totalPages,
           totalItems: count,
-          itemsPerPage: parseInt(limit),
+          itemsPerPage: usePagination ? parseInt(limit) : count,
           hasNextPage,
           hasPrevPage,
         },

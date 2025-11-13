@@ -78,11 +78,12 @@ const setCallLogRemark = async (req, res) => {
       remark !== null &&
       remark !== '' &&
       remark !== 'accept' &&
-      remark !== 'reject'
+      remark !== 'reject' &&
+      remark !== 'pending'
     ) {
       return res
         .status(400)
-        .json({ error: 'remark must be "accept", "reject", or empty string' });
+        .json({ error: 'remark must be "accept", "reject", "pending", or empty string' });
     }
 
     const callLog = await CallLog.findByPk(callLogId);

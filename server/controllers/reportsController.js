@@ -205,6 +205,31 @@ const exportCallsToExcel = async (req, res) => {
   try {
     const { startDate, endDate, status, store, format = 'xlsx' } = req.query;
 
+    // Helper function to parse date string (handles both YYYY-MM-DD and DD/MM/YYYY formats)
+    const parseDate = (dateString) => {
+      if (!dateString) return null;
+      
+      // Try YYYY-MM-DD format first (standard HTML date input format)
+      if (dateString.includes('-')) {
+        return new Date(dateString);
+      }
+      
+      // Try DD/MM/YYYY format
+      if (dateString.includes('/')) {
+        const parts = dateString.split('/');
+        if (parts.length === 3) {
+          // Assume DD/MM/YYYY format
+          const day = parseInt(parts[0], 10);
+          const month = parseInt(parts[1], 10) - 1; // Month is 0-indexed
+          const year = parseInt(parts[2], 10);
+          return new Date(year, month, day);
+        }
+      }
+      
+      // Fallback to default Date parsing
+      return new Date(dateString);
+    };
+
     // Build where clause with proper date range handling
     let whereClause = {};
     if (startDate && endDate) {
@@ -257,61 +282,299 @@ const exportCallsToExcel = async (req, res) => {
       },
     ];
 
-    // Get all call logs with contact information, ordered by most recent first
-    const allCallLogs = await CallLog.findAll({
-      where: whereClause,
-      include: includeClause,
-      order: [['createdAt', 'DESC']],
-    });
+    // When both store and date filters are provided, get ALL contacts for that store and date first
+    // Then match them with call logs to ensure we include all contacts
+    let allContactsForStoreAndDate = [];
+    let callLogsMap = new Map(); // Map contact_id to latest call log
+    
+    if (store && store !== 'all' && (startDate || endDate)) {
+      // Build date range for filtering (reuse the same date parsing logic)
+      let dateFilter = {};
+      if (startDate && endDate) {
+        const start = parseDate(startDate);
+        const end = parseDate(endDate);
+        
+        if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+          console.error(`Invalid date format: startDate=${startDate}, endDate=${endDate}`);
+          return res.status(400).json({ error: 'Invalid date format' });
+        }
+        
+        start.setHours(0, 0, 0, 0);
+        const startUTC = new Date(start.getTime() - 5.5 * 60 * 60 * 1000);
+        
+        end.setHours(23, 59, 59, 999);
+        const endUTC = new Date(end.getTime() - 5.5 * 60 * 60 * 1000);
+        
+        dateFilter = {
+          [Op.between]: [startUTC, endUTC],
+        };
+      } else if (startDate) {
+        const start = parseDate(startDate);
+        if (isNaN(start.getTime())) {
+          console.error(`Invalid start date format: ${startDate}`);
+          return res.status(400).json({ error: 'Invalid start date format' });
+        }
+        start.setHours(0, 0, 0, 0);
+        const startUTC = new Date(start.getTime() - 5.5 * 60 * 60 * 1000);
+        dateFilter = {
+          [Op.gte]: startUTC,
+        };
+      } else if (endDate) {
+        const end = parseDate(endDate);
+        if (isNaN(end.getTime())) {
+          console.error(`Invalid end date format: ${endDate}`);
+          return res.status(400).json({ error: 'Invalid end date format' });
+        }
+        end.setHours(23, 59, 59, 999);
+        const endUTC = new Date(end.getTime() - 5.5 * 60 * 60 * 1000);
+        dateFilter = {
+          [Op.lte]: endUTC,
+        };
+      }
 
-    // Filter call logs by store if store filter is provided, and get only latest per contact
-    const seenContactIds = new Set();
-    const callLogs = [];
-    for (const log of allCallLogs) {
-      // Skip if no contact_id
-      if (!log.contact_id) continue;
+      // Use case-insensitive store comparison
+      const storeCondition = sequelize.where(
+        sequelize.fn('LOWER', sequelize.fn('TRIM', sequelize.col('store'))),
+        store.toLowerCase().trim()
+      );
+
+      // STEP 1: Get all call logs for this store within the date range
+      // This ensures we only get call logs from the selected date
+      const callLogWhereClause = {
+        ...whereClause, // This includes date range (call log createdAt) and status filter
+      };
       
-      // If store filter is applied, check if contact matches store
-      if (store && store !== 'all') {
-        if (!log.contact || log.contact.store !== store) {
-          continue; // Skip this call log if contact doesn't match store
+      // Add store filter to call logs by joining with Contact
+      const callLogsWithStore = await CallLog.findAll({
+        where: callLogWhereClause,
+        include: [{
+          model: Contact,
+          as: 'contact',
+          where: {
+            [Op.and]: [storeCondition],
+          },
+          required: true, // INNER JOIN - only get call logs with matching store
+          attributes: ['id', 'name', 'phone', 'message', 'remark', 'store', 'agent_notes', 'createdAt', 'status'],
+        }],
+        order: [['createdAt', 'DESC']],
+      });
+
+      console.log(`Found ${callLogsWithStore.length} call logs for store "${store}" within date range`);
+
+      // Map call logs to contacts (only latest call log per contact)
+      const contactIdsFromCallLogs = new Set();
+      for (const log of callLogsWithStore) {
+        if (log.contact_id && !callLogsMap.has(log.contact_id)) {
+          callLogsMap.set(log.contact_id, log);
+          contactIdsFromCallLogs.add(log.contact_id);
         }
       }
+
+      // STEP 2: Get all contacts created on this date for this store
+      const contactWhereConditions = [storeCondition];
+      if (Object.keys(dateFilter).length > 0) {
+        contactWhereConditions.push({ createdAt: dateFilter });
+      }
       
-      // Keep only the latest call log for each contact
-      if (!seenContactIds.has(log.contact_id)) {
-        seenContactIds.add(log.contact_id);
-        callLogs.push(log);
+      const contactWhereClause = {
+        [Op.and]: contactWhereConditions,
+      };
+
+      const contactsCreatedOnDate = await Contact.findAll({
+        where: contactWhereClause,
+        attributes: ['id', 'name', 'phone', 'message', 'remark', 'store', 'agent_notes', 'createdAt', 'status'],
+      });
+
+      console.log(`Found ${contactsCreatedOnDate.length} contacts created on date for store "${store}"`);
+
+      // STEP 3: Combine contacts from both sources (union)
+      // - Contacts that have call logs on the selected date
+      // - Contacts created on the selected date
+      const allContactIds = new Set();
+      const contactsMap = new Map();
+
+      // Add contacts from call logs
+      for (const log of callLogsWithStore) {
+        if (log.contact && !allContactIds.has(log.contact.id)) {
+          allContactIds.add(log.contact.id);
+          contactsMap.set(log.contact.id, log.contact);
+        }
+      }
+
+      // Add contacts created on the date
+      for (const contact of contactsCreatedOnDate) {
+        if (!allContactIds.has(contact.id)) {
+          allContactIds.add(contact.id);
+          contactsMap.set(contact.id, contact);
+        }
+      }
+
+      // Convert to array
+      allContactsForStoreAndDate = Array.from(contactsMap.values());
+
+      console.log(`Total unique contacts for store "${store}" on date: ${allContactsForStoreAndDate.length} (${contactIdsFromCallLogs.size} with call logs, ${contactsCreatedOnDate.length} created on date)`);
+    } else {
+      // Original logic when store filter is not provided or no date filter
+      const allCallLogs = await CallLog.findAll({
+        where: whereClause,
+        include: includeClause,
+        order: [['createdAt', 'DESC']],
+      });
+
+      // Filter call logs by store if store filter is provided, and get only latest per contact
+      const seenContactIds = new Set();
+      for (const log of allCallLogs) {
+        if (!log.contact_id) continue;
+        
+        if (store && store !== 'all') {
+          if (!log.contact || log.contact.store !== store) {
+            continue;
+          }
+        }
+        
+        if (!seenContactIds.has(log.contact_id)) {
+          seenContactIds.add(log.contact_id);
+          callLogsMap.set(log.contact_id, log);
+        }
       }
     }
 
-    // Also get "Not Called" contacts for the store if store filter is provided
-    // IMPORTANT: Get ALL "Not Called" contacts for the store, regardless of date filters
-    // Date filters only apply to call logs, not to "Not Called" contacts
-    let notCalledContacts = [];
-    if (store && store !== 'all') {
-      // Get ALL contacts with status "Not Called" for this store
-      // Don't apply date filters here - we want all "Not Called" contacts for the store
-      const notCalledContactsList = await Contact.findAll({
-        where: {
+    // Separate contacts into those with call logs and those without
+    const callLogs = [];
+    const notCalledContacts = [];
+    
+    if (allContactsForStoreAndDate.length > 0) {
+      // We have all contacts for store and date, separate them
+      // IMPORTANT: Only include contacts that are relevant to the selected date
+      // - Contacts with call logs on the selected date (regardless of when contact was created)
+      // - Contacts created on the selected date (even if no call logs)
+      
+      // Build date range to check if contact was created on selected date
+      // This ensures we only include contacts from the selected date, not past dates
+      let dateStartUTC = null;
+      let dateEndUTC = null;
+      
+      if (store && store !== 'all' && (startDate || endDate)) {
+        if (startDate && endDate) {
+          const start = parseDate(startDate);
+          const end = parseDate(endDate);
+          if (!isNaN(start.getTime()) && !isNaN(end.getTime())) {
+            start.setHours(0, 0, 0, 0);
+            dateStartUTC = new Date(start.getTime() - 5.5 * 60 * 60 * 1000);
+            end.setHours(23, 59, 59, 999);
+            dateEndUTC = new Date(end.getTime() - 5.5 * 60 * 60 * 1000);
+          }
+        } else if (startDate) {
+          const start = parseDate(startDate);
+          if (!isNaN(start.getTime())) {
+            start.setHours(0, 0, 0, 0);
+            dateStartUTC = new Date(start.getTime() - 5.5 * 60 * 60 * 1000);
+            const end = new Date(start);
+            end.setHours(23, 59, 59, 999);
+            dateEndUTC = new Date(end.getTime() - 5.5 * 60 * 60 * 1000);
+          }
+        } else if (endDate) {
+          const end = parseDate(endDate);
+          if (!isNaN(end.getTime())) {
+            end.setHours(23, 59, 59, 999);
+            dateEndUTC = new Date(end.getTime() - 5.5 * 60 * 60 * 1000);
+            dateStartUTC = new Date(0); // Start from epoch if only endDate provided
+          }
+        }
+      }
+      
+      for (const contact of allContactsForStoreAndDate) {
+        const callLog = callLogsMap.get(contact.id);
+        
+        if (callLog) {
+          // Contact has a call log on the selected date - include it
+          // Apply status filter to call logs if status is not "all"
+          if (status && status !== 'all' && callLog.status !== status) {
+            // If status filter doesn't match, skip this contact (don't include as "Not Called")
+            // because it has a call log, just not matching the status filter
+            continue;
+          } else {
+            // Add contact info to call log
+            callLog.contact = contact;
+            callLogs.push(callLog);
+          }
+        } else {
+          // No call log in date range - only include if contact was created on the selected date
+          // This ensures we don't include contacts from past dates
+          let contactCreatedOnDate = false;
+          if (dateStartUTC && dateEndUTC) {
+            const contactCreatedAt = new Date(contact.createdAt);
+            contactCreatedOnDate = contactCreatedAt >= dateStartUTC && contactCreatedAt <= dateEndUTC;
+          } else {
+            // If no date filter, include all contacts without call logs
+            contactCreatedOnDate = true;
+          }
+          
+          if (contactCreatedOnDate) {
+            // Only include if status filter allows "Not Called" or is "all"
+            if (!status || status === 'all' || status === 'Not Called') {
+              notCalledContacts.push(contact);
+            }
+          }
+        }
+      }
+      
+      console.log(`Export Summary: Store="${store}", Date="${startDate} to ${endDate}", Status="${status || 'all'}"`);
+      console.log(`  - ${callLogs.length} contacts with call logs (matching status filter)`);
+      console.log(`  - ${notCalledContacts.length} contacts without call logs (created on selected date)`);
+      console.log(`  - Total: ${callLogs.length + notCalledContacts.length} contacts (only from selected date)`);
+    } else {
+      // Convert map to array
+      callLogs.push(...Array.from(callLogsMap.values()));
+      
+      // Get "Not Called" contacts if store filter is provided
+      if (store && store !== 'all') {
+        const contactWhereClause = {
           store: store,
           status: 'Not Called',
-        },
-        attributes: ['id', 'name', 'phone', 'message', 'remark', 'store', 'agent_notes', 'createdAt'],
-      });
+        };
 
-      // Get contact IDs that already have call logs (to avoid duplicates)
-      const contactIdsWithCallLogs = new Set(
-        callLogs
-          .map((log) => log.contact_id)
-          .filter((id) => id !== null && id !== undefined)
-      );
+        if (startDate && endDate) {
+          const start = new Date(startDate);
+          start.setHours(0, 0, 0, 0);
+          const startUTC = new Date(start.getTime() - 5.5 * 60 * 60 * 1000);
+          
+          const end = new Date(endDate);
+          end.setHours(23, 59, 59, 999);
+          const endUTC = new Date(end.getTime() - 5.5 * 60 * 60 * 1000);
+          
+          contactWhereClause.createdAt = {
+            [Op.between]: [startUTC, endUTC],
+          };
+        } else if (startDate) {
+          const start = new Date(startDate);
+          start.setHours(0, 0, 0, 0);
+          const startUTC = new Date(start.getTime() - 5.5 * 60 * 60 * 1000);
+          contactWhereClause.createdAt = {
+            [Op.gte]: startUTC,
+          };
+        } else if (endDate) {
+          const end = new Date(endDate);
+          end.setHours(23, 59, 59, 999);
+          const endUTC = new Date(end.getTime() - 5.5 * 60 * 60 * 1000);
+          contactWhereClause.createdAt = {
+            [Op.lte]: endUTC,
+          };
+        }
 
-      // Filter out contacts that already have call logs
-      // This ensures we only include contacts that truly have no call logs
-      notCalledContacts = notCalledContactsList.filter(
-        (contact) => !contactIdsWithCallLogs.has(contact.id)
-      );
+        const notCalledContactsList = await Contact.findAll({
+          where: contactWhereClause,
+          attributes: ['id', 'name', 'phone', 'message', 'remark', 'store', 'agent_notes', 'createdAt'],
+        });
+
+        const contactIdsWithCallLogs = new Set(
+          callLogs.map((log) => log.contact_id).filter((id) => id !== null && id !== undefined)
+        );
+
+        notCalledContacts.push(...notCalledContactsList.filter(
+          (contact) => !contactIdsWithCallLogs.has(contact.id)
+        ));
+      }
     }
 
     // Helper function to parse message

@@ -402,10 +402,22 @@ const CallTable = () => {
     return true;
   });
 
-  // Calculate total contacts for the selected store only (regardless of other filters)
-  // This is used to show the total count when a store is selected
+  // Calculate total contacts for the selected store only
+  // When store is selected: count contacts for that store (respecting date filter if applied)
+  // When no store selected: use baseFilteredContacts (respects date/product filters)
   const totalContactsForStore = storeFilter !== 'all' 
-    ? contacts.filter((contact) => contact.store === storeFilter).length
+    ? contacts.filter((contact) => {
+        // Check store match
+        if (!contact.store || contact.store !== storeFilter) return false;
+        
+        // Apply date filter if it's set
+        if (dateFilter) {
+          const contactDate = contact.createdAt || contact.created_at;
+          if (!isDateInRange(contactDate, dateFilter)) return false;
+        }
+        
+        return true;
+      }).length
     : baseFilteredContacts.length;
 
   // Pagination logic

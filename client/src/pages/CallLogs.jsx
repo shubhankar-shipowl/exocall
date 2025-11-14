@@ -95,6 +95,37 @@ const CallLogs = () => {
       if (response.ok) {
         const data = await response.json();
         console.log('📋 Call Logs Response:', data.data.callLogs);
+        
+        // Helper function to normalize status values to exact format
+        const normalizeStatus = (status) => {
+          if (!status) return status;
+          
+          const statusLower = status.toLowerCase().trim();
+          
+          // Map common variations to exact format
+          if (statusLower === 'not connect' || statusLower === 'notconnect' || statusLower === 'not_connect') {
+            return 'Not Connect';
+          }
+          if (statusLower === 'not called' || statusLower === 'notcalled' || statusLower === 'not_called') {
+            return 'Not Called';
+          }
+          if (statusLower === 'no answer' || statusLower === 'noanswer' || statusLower === 'no_answer') {
+            return 'No Answer';
+          }
+          if (statusLower === 'switched off' || statusLower === 'switchedoff' || statusLower === 'switched_off') {
+            return 'Switched Off';
+          }
+          if (statusLower === 'in progress' || statusLower === 'inprogress' || statusLower === 'in_progress') {
+            return 'In Progress';
+          }
+          
+          // For other statuses, capitalize first letter of each word
+          return status
+            .split(/\s+/)
+            .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+            .join(' ');
+        };
+        
         const callLogs = data.data.callLogs.map((log) => {
           console.log('🔍 Processing call log:', {
             id: log.id,
@@ -107,7 +138,7 @@ const CallLogs = () => {
             id: log.id,
             contact: log.contact?.name || 'Unknown',
             phone: log.contact?.phone || 'N/A',
-            status: log.status,
+            status: normalizeStatus(log.status), // Normalize status to exact format
             duration: log.duration
               ? `${Math.floor(log.duration / 60)}:${(log.duration % 60)
                   .toString()
@@ -175,8 +206,13 @@ const CallLogs = () => {
 
   // Filter calls based on status, remark, store, and date
   const filteredCalls = calls.filter((call) => {
+    // Normalize both the filter and call status for comparison
+    const normalizeForFilter = (status) => {
+      if (!status) return '';
+      return status.toLowerCase().trim().replace(/\s+/g, ' ');
+    };
     const statusMatch =
-      filter === 'all' || (call.status || '').toLowerCase() === filter;
+      filter === 'all' || normalizeForFilter(call.status) === normalizeForFilter(filter);
     
             const remarkMatch =
       remarkFilter === 'all' || 

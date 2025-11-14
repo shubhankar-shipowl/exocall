@@ -75,13 +75,31 @@ const setStatusOverride = async (req, res) => {
         status: status 
       });
 
-      // Update most recent call log for this contact if any
+      // Find or create call log for this contact
+      // This ensures overridden statuses appear in call logs even if no call was made
       const lastLog = await CallLog.findOne({
         where: { contact_id: contact.id },
         order: [['createdAt', 'DESC']],
       });
+      
       if (lastLog) {
+        // Update existing call log with new status
         await lastLog.update({ status });
+      } else {
+        // Create a new call log entry for the overridden status
+        // This ensures it appears in call logs even if no actual call was made
+        // Get the maximum attempt number for this contact to set the correct attempt_no
+        const maxAttempt = await CallLog.max('attempt_no', {
+          where: { contact_id: contact.id },
+        });
+        
+        await CallLog.create({
+          contact_id: contact.id,
+          attempt_no: (maxAttempt || 0) + 1,
+          status: status,
+          duration: 0, // No duration since no actual call was made
+          recording_url: null,
+        });
       }
     } else {
       // Clear override (set to null), but keep current status

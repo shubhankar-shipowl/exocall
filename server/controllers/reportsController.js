@@ -339,14 +339,44 @@ const exportCallsToExcel = async (req, res) => {
       );
 
       // STEP 1: Get all call logs for this store within the date range
-      // This ensures we only get call logs from the selected date
-      const callLogWhereClause = {
-        ...whereClause, // This includes date range (call log createdAt) and status filter
-      };
+      // IMPORTANT: When status is "all", we need to fetch ALL call logs (including "Not Connect")
+      // Build call log where clause without status filter to get all call logs
+      const callLogDateFilter = {};
+      if (startDate && endDate) {
+        const start = parseDate(startDate);
+        const end = parseDate(endDate);
+        if (!isNaN(start.getTime()) && !isNaN(end.getTime())) {
+          start.setHours(0, 0, 0, 0);
+          const startUTC = new Date(start.getTime() - 5.5 * 60 * 60 * 1000);
+          end.setHours(23, 59, 59, 999);
+          const endUTC = new Date(end.getTime() - 5.5 * 60 * 60 * 1000);
+          callLogDateFilter.createdAt = {
+            [Op.between]: [startUTC, endUTC],
+          };
+        }
+      } else if (startDate) {
+        const start = parseDate(startDate);
+        if (!isNaN(start.getTime())) {
+          start.setHours(0, 0, 0, 0);
+          const startUTC = new Date(start.getTime() - 5.5 * 60 * 60 * 1000);
+          callLogDateFilter.createdAt = {
+            [Op.gte]: startUTC,
+          };
+        }
+      } else if (endDate) {
+        const end = parseDate(endDate);
+        if (!isNaN(end.getTime())) {
+          end.setHours(23, 59, 59, 999);
+          const endUTC = new Date(end.getTime() - 5.5 * 60 * 60 * 1000);
+          callLogDateFilter.createdAt = {
+            [Op.lte]: endUTC,
+          };
+        }
+      }
       
-      // Add store filter to call logs by joining with Contact
+      // Fetch ALL call logs for the date range (no status filter) to ensure we get all contacts
       const callLogsWithStore = await CallLog.findAll({
-        where: callLogWhereClause,
+        where: callLogDateFilter,
         include: [{
           model: Contact,
           as: 'contact',
@@ -359,9 +389,10 @@ const exportCallsToExcel = async (req, res) => {
         order: [['createdAt', 'DESC']],
       });
 
-      console.log(`Found ${callLogsWithStore.length} call logs for store "${store}" within date range`);
+      console.log(`Found ${callLogsWithStore.length} call logs for store "${store}" within date range (all statuses)`);
 
       // Map call logs to contacts (only latest call log per contact)
+      // IMPORTANT: Include ALL call logs, regardless of status, so we can match all contacts
       const contactIdsFromCallLogs = new Set();
       for (const log of callLogsWithStore) {
         if (log.contact_id && !callLogsMap.has(log.contact_id)) {
@@ -483,18 +514,22 @@ const exportCallsToExcel = async (req, res) => {
         }
       }
       
+      // IMPORTANT: Include ALL contacts created on the selected date
+      // When status is "all", include all contacts regardless of their call log status
+      // When status is specific, only include contacts with matching status call logs OR contacts without call logs
       for (const contact of allContactsForStoreAndDate) {
         const callLog = callLogsMap.get(contact.id);
         
         if (callLog) {
-          // Contact has a call log on the selected date - include it
-          // Apply status filter to call logs if status is not "all"
+          // Contact has a call log on the selected date
+          // Apply status filter only if status is not "all"
           if (status && status !== 'all' && callLog.status !== status) {
             // If status filter doesn't match, skip this contact (don't include as "Not Called")
             // because it has a call log, just not matching the status filter
             continue;
           } else {
-            // Add contact info to call log
+            // Include this contact with its call log data
+            // This includes ALL statuses when status is "all" (including "Not Connect")
             callLog.contact = contact;
             callLogs.push(callLog);
           }
@@ -622,6 +657,36 @@ const exportCallsToExcel = async (req, res) => {
       return '';
     };
 
+    // Helper function to normalize status values to exact format
+    const normalizeStatus = (status) => {
+      if (!status) return status;
+      
+      const statusLower = status.toLowerCase().trim();
+      
+      // Map common variations to exact format
+      if (statusLower === 'not connect' || statusLower === 'notconnect' || statusLower === 'not_connect') {
+        return 'Not Connect';
+      }
+      if (statusLower === 'not called' || statusLower === 'notcalled' || statusLower === 'not_called') {
+        return 'Not Called';
+      }
+      if (statusLower === 'no answer' || statusLower === 'noanswer' || statusLower === 'no_answer') {
+        return 'No Answer';
+      }
+      if (statusLower === 'switched off' || statusLower === 'switchedoff' || statusLower === 'switched_off') {
+        return 'Switched Off';
+      }
+      if (statusLower === 'in progress' || statusLower === 'inprogress' || statusLower === 'in_progress') {
+        return 'In Progress';
+      }
+      
+      // For other statuses, capitalize first letter of each word
+      return status
+        .split(/\s+/)
+        .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+        .join(' ');
+    };
+
     // Prepare data for export from call logs
     const callLogData = callLogs.map((log) => {
       const messageData = parseMessage(log.contact?.message);
@@ -646,7 +711,7 @@ const exportCallsToExcel = async (req, res) => {
         Address: messageData.Address || 'N/A',
         Pincode: messageData.Pincode || 'N/A',
         'Attempt No': log.attempt_no,
-        Status: log.status,
+        Status: normalizeStatus(log.status),
         'Duration (formatted)': durationFormatted,
         'Recording URL': recordingURL,
         Remark: log.contact?.remark || log.remark || '-',
@@ -778,7 +843,8 @@ const getCallLogs = async (req, res) => {
     const offset = usePagination ? (page - 1) * limitValue : 0;
 
     // Build where clause with proper date range handling
-    let whereClause = {};
+    const whereConditions = [];
+    
     if (startDate && endDate) {
       // Set startDate to beginning of day (00:00:00) in IST
       const start = new Date(startDate);
@@ -792,30 +858,47 @@ const getCallLogs = async (req, res) => {
       // Convert to UTC for database comparison
       const endUTC = new Date(end.getTime() - 5.5 * 60 * 60 * 1000);
       
-      whereClause.createdAt = {
-        [Op.between]: [startUTC, endUTC],
-      };
+      whereConditions.push({
+        createdAt: {
+          [Op.between]: [startUTC, endUTC],
+        },
+      });
     } else if (startDate) {
       // Set startDate to beginning of day in IST
       const start = new Date(startDate);
       start.setHours(0, 0, 0, 0);
       const startUTC = new Date(start.getTime() - 5.5 * 60 * 60 * 1000);
-      whereClause.createdAt = {
-        [Op.gte]: startUTC,
-      };
+      whereConditions.push({
+        createdAt: {
+          [Op.gte]: startUTC,
+        },
+      });
     } else if (endDate) {
       // Set endDate to end of day in IST
       const end = new Date(endDate);
       end.setHours(23, 59, 59, 999);
       const endUTC = new Date(end.getTime() - 5.5 * 60 * 60 * 1000);
-      whereClause.createdAt = {
-        [Op.lte]: endUTC,
-      };
+      whereConditions.push({
+        createdAt: {
+          [Op.lte]: endUTC,
+        },
+      });
     }
 
     if (status && status !== 'all') {
-      whereClause.status = status;
+      // Normalize status filter to handle case variations
+      // Use case-insensitive comparison using LOWER() function
+      const statusLower = status.toLowerCase().trim();
+      whereConditions.push(
+        sequelize.where(
+          sequelize.fn('LOWER', sequelize.col('CallLog.status')),
+          statusLower
+        )
+      );
     }
+    
+    // Build final where clause
+    const whereClause = whereConditions.length > 0 ? { [Op.and]: whereConditions } : {};
 
     // Build include clause with store filter if provided
     const includeClause = [

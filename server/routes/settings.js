@@ -12,7 +12,7 @@ router.use(authenticate);
 // View settings - both admin and agent can view
 router.get("/", getSettings);
 
-// Update settings - admin only
-router.put("/", authorize(["admin"]), updateSettings);
+// Update settings - both admin and agent can update (user-specific settings)
+router.put("/", updateSettings);
 
 module.exports = router;

@@ -137,43 +137,166 @@ const initiateCall = async (req, res) => {
       });
     }
 
-    // Validate required environment variables
-    const requiredEnvVars = [
-      'EXOTEL_KEY',
-      'EXOTEL_TOKEN',
-      'EXOTEL_SID',
-      'AGENT_NUMBER',
-      'CALLER_ID',
-      'FLOW_URL',
-    ];
+    // Get current user ID from request
+    const userId = req.user?.id;
+    
+    if (!userId) {
+      return res.status(401).json({ error: 'User not authenticated' });
+    }
 
-    const missingVars = requiredEnvVars.filter(
-      (varName) => !process.env[varName],
-    );
-    if (missingVars.length > 0) {
-      return res.status(500).json({
-        error: 'Missing required environment variables',
-        missing: missingVars,
+    // Get Exotel settings from database for this specific user, with fallback to .env
+    const Settings = require('../models/Settings');
+    const settings = await Settings.findOne({
+      where: { user_id: userId },
+      order: [['createdAt', 'DESC']],
+    });
+
+    // Helper function to get setting value with fallback
+    const getSettingValue = (dbValue, envValue, altEnvValue = null) => {
+      if (dbValue && typeof dbValue === 'string' && dbValue.trim().length > 0) {
+        return dbValue.trim();
+      }
+      return envValue || altEnvValue || '';
+    };
+
+    // Get settings from database (user-specific), fallback to .env if not set
+    const exotelSid = getSettingValue(settings?.exotel_sid, process.env.EXOTEL_SID);
+    const apiKey = getSettingValue(settings?.api_key, process.env.EXOTEL_API_KEY, process.env.EXOTEL_KEY);
+    const apiToken = getSettingValue(settings?.api_token, process.env.EXOTEL_API_TOKEN, process.env.EXOTEL_TOKEN);
+    const agentNumber = getSettingValue(settings?.agent_number, process.env.EXOTEL_AGENT_NUMBER, process.env.AGENT_NUMBER);
+    const callerId = getSettingValue(settings?.caller_id, process.env.EXOTEL_CALLER_ID, process.env.CALLER_ID);
+
+    // Log which settings are being used
+    console.log('📞 [Call Initiation] User-Specific Settings:', {
+      userId: userId,
+      userEmail: req.user?.email,
+      hasUserSettings: !!settings,
+      agentNumberFromDB: settings?.agent_number || '(empty)',
+      agentNumberFromEnv: process.env.EXOTEL_AGENT_NUMBER || process.env.AGENT_NUMBER || '(not set)',
+      finalAgentNumber: agentNumber || '(MISSING!)',
+      usingDBValue: !!(settings?.agent_number && settings.agent_number.trim().length > 0),
+      usingEnvValue: !agentNumber || agentNumber === (process.env.EXOTEL_AGENT_NUMBER || process.env.AGENT_NUMBER || '').trim(),
+      exotelSid: exotelSid || '(MISSING!)',
+      hasApiKey: !!apiKey,
+      hasApiToken: !!apiToken,
+      callerId: callerId || '(MISSING!)',
+      contactPhone: contact.phone,
+    });
+
+    // Validate required settings
+    if (!exotelSid || !apiKey || !apiToken || !agentNumber || !callerId) {
+      console.error('❌ [Call Initiation] Missing configuration:', {
+        userId,
+        exotelSid: !!exotelSid,
+        apiKey: !!apiKey,
+        apiToken: !!apiToken,
+        agentNumber: !!agentNumber,
+        callerId: !!callerId,
+      });
+      return res.status(400).json({
+        error:
+          'Incomplete Exotel configuration. Please configure Agent Number in Settings or set EXOTEL_AGENT_NUMBER in .env file. Also check SID, API Key, API Token, and Caller ID.',
+      });
+    }
+
+    // Clean and format phone numbers
+    const cleanAgentNumber = agentNumber.trim().replace(/\s+/g, '');
+    const cleanContactPhone = contact.phone.trim().replace(/\s+/g, '');
+    const cleanCallerId = callerId.trim().replace(/\s+/g, '');
+
+    // Format phone numbers for Exotel API (E.164 format)
+    const formatPhoneForExotel = (phone) => {
+      if (!phone) return phone;
+      let cleaned = phone.replace(/\s+/g, '');
+      if (cleaned.startsWith('+')) return cleaned;
+      if (/^\d{10}$/.test(cleaned)) return `+91${cleaned}`;
+      if (/^91\d{10}$/.test(cleaned)) return `+${cleaned}`;
+      return cleaned;
+    };
+
+    const formattedAgentNumber = formatPhoneForExotel(cleanAgentNumber);
+    const formattedContactPhone = formatPhoneForExotel(cleanContactPhone);
+    
+    // CallerId must be a phone number, not a name
+    let formattedCallerId = cleanCallerId.replace(/\s+/g, '');
+    const isPhoneNumber = /^[\d+]+$/.test(formattedCallerId);
+    
+    if (!isPhoneNumber) {
+      console.warn('⚠️  [Call Initiation] CallerId is not a phone number, using agent number:', formattedCallerId);
+      formattedCallerId = formattedAgentNumber;
+    } else {
+      formattedCallerId = formatPhoneForExotel(formattedCallerId);
+    }
+
+    // Validate formatted phone numbers
+    if (!formattedAgentNumber || formattedAgentNumber.length < 12 || !formattedAgentNumber.startsWith('+')) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid agent number format',
+        message: 'Agent number must be in E.164 format with country code (e.g., +919504785931).',
+      });
+    }
+
+    if (!formattedContactPhone || formattedContactPhone.length < 12 || !formattedContactPhone.startsWith('+')) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid contact phone format',
+        message: 'Contact phone number must be in E.164 format with country code.',
       });
     }
 
     // Prepare Exotel API call for call bridging
-    // Use ExoML for proper agent-to-customer bridging
-    const exotelUrl = `https://${process.env.EXOTEL_KEY}:${process.env.EXOTEL_TOKEN}@api.exotel.com/v1/Accounts/${process.env.EXOTEL_SID}/Calls/connect`;
+    const exotelUrl = `https://${apiKey}:${apiToken}@api.exotel.com/v1/Accounts/${exotelSid}/Calls/connect`;
+
+    // Comprehensive logging of API call with all parameters
+    console.log('═══════════════════════════════════════════════════════════');
+    console.log('📞 [CALL API REQUEST] Initiating Exotel API Call');
+    console.log('═══════════════════════════════════════════════════════════');
+    console.log('👤 User Information:');
+    console.log('   - User ID:', userId);
+    console.log('   - User Email:', req.user?.email);
+    console.log('   - User Role:', req.user?.role);
+    console.log('');
+    console.log('📋 Contact Details:');
+    console.log('   - Contact ID:', contact.id);
+    console.log('   - Contact Name:', contact.name);
+    console.log('   - Contact Phone (raw):', contact.phone);
+    console.log('   - Contact Phone (formatted):', formattedContactPhone);
+    console.log('');
+    console.log('⚙️  Exotel Configuration:');
+    console.log('   - Exotel SID:', exotelSid);
+    console.log('   - API Key:', apiKey ? '***' + apiKey.slice(-4) : '(missing)');
+    console.log('   - API Token:', apiToken ? '***' + apiToken.slice(-4) : '(missing)');
+    console.log('   - Exotel URL:', exotelUrl.replace(/\/\/[^:]+:[^@]+@/, '//***:***@'));
+    console.log('');
+    console.log('📱 Phone Numbers:');
+    console.log('   - Agent Number (raw from DB):', settings?.agent_number || '(not in DB)');
+    console.log('   - Agent Number (raw from ENV):', process.env.EXOTEL_AGENT_NUMBER || process.env.AGENT_NUMBER || '(not in ENV)');
+    console.log('   - Agent Number (final used):', agentNumber);
+    console.log('   - Agent Number (formatted for API):', formattedAgentNumber);
+    console.log('   - Caller ID (raw):', callerId);
+    console.log('   - Caller ID (formatted):', formattedCallerId);
+    console.log('');
+    console.log('📤 API Request Parameters:');
+    console.log('   - From:', formattedAgentNumber);
+    console.log('   - To:', formattedContactPhone);
+    console.log('   - CallerId:', formattedCallerId);
+    console.log('═══════════════════════════════════════════════════════════');
 
     const exotelParams = {
-      From: process.env.AGENT_NUMBER, // Agent's number (call agent first)
-      To: contact.phone, // Customer's number (then call customer)
-      CallerId: process.env.CALLER_ID,
+      From: formattedAgentNumber, // Agent's number (call agent first) - user-specific
+      To: formattedContactPhone, // Customer's number (then call customer)
+      CallerId: formattedCallerId,
       StatusCallback: `${
         process.env.SERVER_URL || 'http://localhost:8006'
       }/api/webhook/exotel`,
-      StatusCallbackEvents: ['terminal'],
+      // StatusCallbackEvents removed - not a valid parameter for Exotel Connect API
+      // Exotel will send callbacks automatically for terminal events
       StatusCallbackContentType: 'application/json',
-      TimeLimit: 300, // 5 minutes max call duration
-      TimeOut: 30, // 30 seconds ring timeout
-      Record: true, // Record the call
-      RecordingChannels: 'dual', // Separate channels for caller and callee
+      TimeLimit: '300', // String format
+      TimeOut: '30', // String format
+      Record: 'true', // String format
+      RecordingChannels: 'dual',
       CustomField: `contact_id:${contact.id}`,
     };
 

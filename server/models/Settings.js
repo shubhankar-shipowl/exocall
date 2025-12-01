@@ -9,6 +9,14 @@ const Settings = sequelize.define(
       primaryKey: true,
       autoIncrement: true,
     },
+    user_id: {
+      type: DataTypes.INTEGER,
+      allowNull: true, // Allow null for global settings (admin)
+      references: {
+        model: "users",
+        key: "id",
+      },
+    },
     exotel_sid: {
       type: DataTypes.STRING,
       allowNull: true,
@@ -35,6 +43,11 @@ const Settings = sequelize.define(
     timestamps: true,
     createdAt: "createdAt",
     updatedAt: "updatedAt",
+    indexes: [
+      {
+        fields: ["user_id"],
+      },
+    ],
   }
 );
 

@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Save,
   Bell,
@@ -8,11 +8,13 @@ import {
   CheckCircle,
   AlertCircle,
   Lock,
+  Phone,
 } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
+import { toast } from "react-toastify";
 
 const Settings = () => {
-  const { isAdmin } = useAuth();
+  const { isAdmin, token } = useAuth();
   const [settings, setSettings] = useState({
     notifications: true,
     emailNotifications: true,
@@ -25,6 +27,13 @@ const Settings = () => {
     timeFormat: "12h",
   });
 
+  // Exotel settings state
+  const [exotelSettings, setExotelSettings] = useState({
+    agent_number: "",
+  });
+  const [isLoadingExotel, setIsLoadingExotel] = useState(false);
+  const [isSavingExotel, setIsSavingExotel] = useState(false);
+
   const [isSaving, setIsSaving] = useState(false);
   const [lastSaved, setLastSaved] = useState(null);
 
@@ -36,6 +45,50 @@ const Settings = () => {
       ...prev,
       [name]: newValue,
     }));
+  };
+
+  const handleExotelInputChange = (e) => {
+    const { name, value } = e.target;
+    setExotelSettings((prev) => ({
+      ...prev,
+      [name]: value,
+    }));
+  };
+
+  const handleSaveExotelSettings = async () => {
+    if (!token) {
+      toast.error("Please login to save settings");
+      return;
+    }
+
+    setIsSavingExotel(true);
+    try {
+      const response = await fetch("/api/settings", {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(exotelSettings),
+      });
+
+      if (response.ok) {
+        const updatedSettings = await response.json();
+        setExotelSettings({
+          agent_number: updatedSettings.agent_number || "",
+        });
+        toast.success("Agent number saved successfully!");
+        setLastSaved(new Date().toLocaleTimeString());
+      } else {
+        const error = await response.json();
+        toast.error(error.error || "Failed to save agent number");
+      }
+    } catch (error) {
+      console.error("Error saving Exotel settings:", error);
+      toast.error("Error saving agent number");
+    } finally {
+      setIsSavingExotel(false);
+    }
   };
 
   const showNotification = (message, type = "info") => {
@@ -109,6 +162,38 @@ const Settings = () => {
     );
     alert("Settings reset to defaults!");
   };
+
+  // Load Exotel settings from API
+  useEffect(() => {
+    const loadExotelSettings = async () => {
+      if (!token) return;
+      
+      setIsLoadingExotel(true);
+      try {
+        const response = await fetch("/api/settings", {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          console.log("Loaded Exotel settings:", data);
+          setExotelSettings({
+            agent_number: data.agent_number || "",
+          });
+        } else {
+          console.error("Failed to load Exotel settings");
+        }
+      } catch (error) {
+        console.error("Error loading Exotel settings:", error);
+      } finally {
+        setIsLoadingExotel(false);
+      }
+    };
+
+    loadExotelSettings();
+  }, [token]);
 
   // Load settings from localStorage on component mount
   React.useEffect(() => {
@@ -335,6 +420,144 @@ const Settings = () => {
               </div>
             </div>
           ))}
+        </div>
+      </div>
+
+      {/* Exotel Settings */}
+      <div style={{ marginBottom: "32px" }}>
+        <h2
+          style={{
+            fontSize: "20px",
+            fontWeight: "600",
+            color: "#111827",
+            margin: "0 0 16px 0",
+          }}
+        >
+          Exotel Settings
+        </h2>
+        <div
+          style={{
+            backgroundColor: "white",
+            borderRadius: "8px",
+            boxShadow: "0 1px 3px 0 rgba(0, 0, 0, 0.1)",
+            padding: "24px",
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "8px",
+              marginBottom: "20px",
+            }}
+          >
+            <Phone style={{ width: "18px", height: "18px", color: "#3b82f6" }} />
+            <h3
+              style={{
+                fontSize: "16px",
+                fontWeight: "600",
+                color: "#111827",
+                margin: 0,
+              }}
+            >
+              Agent Number
+            </h3>
+          </div>
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: "16px",
+            }}
+          >
+            <div>
+              <label
+                style={{
+                  display: "block",
+                  fontSize: "14px",
+                  color: "#374151",
+                  marginBottom: "8px",
+                  fontWeight: "500",
+                }}
+              >
+                Your Agent Phone Number
+              </label>
+              <input
+                type="text"
+                name="agent_number"
+                value={exotelSettings.agent_number}
+                onChange={handleExotelInputChange}
+                placeholder="e.g., 919504785931 or +919504785931"
+                disabled={isLoadingExotel || isSavingExotel}
+                style={{
+                  width: "100%",
+                  maxWidth: "400px",
+                  padding: "10px 12px",
+                  border: "1px solid #d1d5db",
+                  borderRadius: "6px",
+                  fontSize: "14px",
+                  backgroundColor: isLoadingExotel || isSavingExotel ? "#f3f4f6" : "white",
+                }}
+              />
+              <p
+                style={{
+                  fontSize: "12px",
+                  color: "#6b7280",
+                  marginTop: "6px",
+                  marginBottom: 0,
+                }}
+              >
+                This is your phone number that will be used when making calls. 
+                Format: 10 digits (e.g., 9504785931) or with country code (e.g., +919504785931)
+              </p>
+            </div>
+            <button
+              onClick={handleSaveExotelSettings}
+              disabled={isSavingExotel || isLoadingExotel}
+              style={{
+                backgroundColor: isSavingExotel ? "#9ca3af" : "#3b82f6",
+                color: "white",
+                padding: "10px 20px",
+                borderRadius: "6px",
+                border: "none",
+                cursor: isSavingExotel || isLoadingExotel ? "not-allowed" : "pointer",
+                fontSize: "14px",
+                fontWeight: "500",
+                display: "flex",
+                alignItems: "center",
+                gap: "8px",
+                width: "fit-content",
+                transition: "background-color 0.2s",
+              }}
+              onMouseEnter={(e) => {
+                if (!isSavingExotel && !isLoadingExotel) {
+                  e.target.style.backgroundColor = "#2563eb";
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (!isSavingExotel && !isLoadingExotel) {
+                  e.target.style.backgroundColor = "#3b82f6";
+                }
+              }}
+            >
+              <Save style={{ width: "16px", height: "16px" }} />
+              {isSavingExotel ? "Saving..." : isLoadingExotel ? "Loading..." : "Save Agent Number"}
+            </button>
+            {exotelSettings.agent_number && (
+              <div
+                style={{
+                  fontSize: "12px",
+                  color: "#059669",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "6px",
+                }}
+              >
+                <CheckCircle style={{ width: "16px", height: "16px" }} />
+                Agent number configured: {exotelSettings.agent_number}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 

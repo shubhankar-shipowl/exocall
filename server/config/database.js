@@ -14,6 +14,7 @@ const sequelize = new Sequelize(
       min: 0,
       acquire: 30000,
       idle: 10000,
+      evict: 1000, // Check for idle connections every second
     },
     // Force fresh connections - no caching
     define: {
@@ -22,6 +23,8 @@ const sequelize = new Sequelize(
     // Reset query timeouts
     dialectOptions: {
       connectTimeout: 60000,
+      // Force MySQL to refresh table information
+      flags: ['-FOUND_ROWS'],
     },
   }
 );

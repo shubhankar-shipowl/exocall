@@ -40,6 +40,20 @@ const CallLog = sequelize.define(
       allowNull: true,
       comment: "Duration in seconds",
     },
+    remark: {
+      type: DataTypes.STRING(50),
+      allowNull: true,
+      comment: "Remark: accept or reject",
+    },
+    user_id: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      references: {
+        model: "users",
+        key: "id",
+      },
+      comment: "User who made the call",
+    },
   },
   {
     tableName: "call_logs",

@@ -2,6 +2,7 @@ const { CallLog, Contact } = require('../associations');
 
 const getCalls = async (req, res) => {
   try {
+    const { CallLog, Contact, User } = require('../associations');
     const calls = await CallLog.findAll({
       include: [
         {
@@ -17,6 +18,12 @@ const getCalls = async (req, res) => {
             'address',
             'store',
           ],
+        },
+        {
+          model: User,
+          as: 'user',
+          attributes: ['id', 'username', 'email'],
+          required: false, // LEFT JOIN - include even if no user
         },
       ],
       order: [['createdAt', 'DESC']],
@@ -39,6 +46,7 @@ const createCall = async (req, res) => {
 
 const getCallLogsByContact = async (req, res) => {
   try {
+    const { CallLog, Contact, User } = require('../associations');
     const { contactId } = req.params;
     const callLogs = await CallLog.findAll({
       where: { contact_id: contactId },
@@ -56,6 +64,12 @@ const getCallLogsByContact = async (req, res) => {
             'address',
             'store',
           ],
+        },
+        {
+          model: User,
+          as: 'user',
+          attributes: ['id', 'username', 'email'],
+          required: false, // LEFT JOIN - include even if no user
         },
       ],
       order: [['createdAt', 'DESC']],

@@ -176,6 +176,7 @@ const retryContactCall = async (req, res) => {
           contact_id: contact.id,
           attempt_no: 1,
           status: 'In Progress',
+          user_id: req.user?.id || null, // Store which user made the call
         },
         { transaction },
       );
@@ -213,6 +214,7 @@ const retryContactCall = async (req, res) => {
           contact_id: contact.id,
           attempt_no: contact.attempts + 1,
           status: 'Failed',
+          user_id: req.user?.id || null, // Store which user made the call
         },
         { transaction },
       );
@@ -262,6 +264,7 @@ const markContactResolved = async (req, res) => {
         contact_id: contact.id,
         attempt_no: contact.attempts + 1,
         status: 'Completed',
+        user_id: req.user?.id || null, // Store which user made the call
       },
       { transaction },
     );

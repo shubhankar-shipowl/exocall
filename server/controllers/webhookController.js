@@ -282,20 +282,26 @@ const handleExotelWebhook = async (req, res) => {
       );
     } else {
       // Create new call log entry using raw SQL
+      // Try to find user_id from any existing call log for this contact/exotel_call_sid
+      const [userLogs] = await sequelize.query(
+        `SELECT user_id FROM call_logs WHERE contact_id = ${contact.id} AND exotel_call_sid = '${CallSid}' AND user_id IS NOT NULL ORDER BY createdAt ASC LIMIT 1`
+      );
+      const userId = userLogs.length > 0 && userLogs[0].user_id ? userLogs[0].user_id : 'NULL';
+      
       const attemptNo =
         contact.attempts +
         (contactStatus !== 'In Progress' && contactStatus !== 'Initiated'
           ? 1
           : 0);
       await sequelize.query(
-        `INSERT INTO call_logs (contact_id, exotel_call_sid, attempt_no, status, duration, recording_url, createdAt, updatedAt) 
+        `INSERT INTO call_logs (contact_id, exotel_call_sid, attempt_no, status, duration, recording_url, user_id, createdAt, updatedAt) 
          VALUES (${
            contact.id
          }, '${CallSid}', ${attemptNo}, '${contactStatus}', ${
           updateData.duration || 'NULL'
         }, ${
           updateData.recording_url ? `'${updateData.recording_url}'` : 'NULL'
-        }, '${new Date().toISOString()}', '${new Date().toISOString()}')`,
+        }, ${userId}, '${new Date().toISOString()}', '${new Date().toISOString()}')`,
       );
     }
 

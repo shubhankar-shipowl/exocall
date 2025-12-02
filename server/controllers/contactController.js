@@ -99,6 +99,7 @@ const setStatusOverride = async (req, res) => {
           status: status,
           duration: 0, // No duration since no actual call was made
           recording_url: null,
+          user_id: req.user?.id || null, // Store which user made the manual override
         });
       }
     } else {
@@ -352,6 +353,7 @@ const initiateCall = async (req, res) => {
       status: 'Initiated', // This will be updated by webhook
       attempt_no: (contact.attempts || 0) + 1,
       duration: 0,
+      user_id: userId, // Store which user made the call
     });
 
     // Set a timeout to update status to "Failed" if no webhook comes within 2 minutes

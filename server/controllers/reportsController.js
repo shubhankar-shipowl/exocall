@@ -58,6 +58,14 @@ const getCallStatistics = async (req, res) => {
       whereClause.status = status;
     }
 
+    // Role-based filtering: Agents can only see their own call logs
+    if (req.user && req.user.role !== 'admin') {
+      whereClause.user_id = req.user.id;
+      console.log(`🔒 [CallStatistics] Filtering statistics for user ${req.user.id} (role: ${req.user.role})`);
+    } else if (req.user && req.user.role === 'admin') {
+      console.log(`👑 [CallStatistics] Admin user - showing all statistics`);
+    }
+
     // Build include clause for store filtering
     const includeClause = store && store !== 'all' ? [
       {
@@ -270,6 +278,14 @@ const exportCallsToExcel = async (req, res) => {
       whereClause.status = status;
     }
 
+    // Role-based filtering: Agents can only see their own call logs
+    if (req.user && req.user.role !== 'admin') {
+      whereClause.user_id = req.user.id;
+      console.log(`🔒 [ExportCalls] Filtering exports for user ${req.user.id} (role: ${req.user.role})`);
+    } else if (req.user && req.user.role === 'admin') {
+      console.log(`👑 [ExportCalls] Admin user - exporting all call logs`);
+    }
+
     // Build include clause with store filter if provided
     // Use required: false to ensure we get call logs even if contact doesn't match store filter
     // We'll filter by store later to ensure accuracy
@@ -374,6 +390,11 @@ const exportCallsToExcel = async (req, res) => {
         }
       }
       
+      // Role-based filtering: Add user_id filter for agents
+      if (req.user && req.user.role !== 'admin') {
+        callLogDateFilter.user_id = req.user.id;
+      }
+
       // Fetch ALL call logs for the date range (no status filter) to ensure we get all contacts
       const callLogsWithStore = await CallLog.findAll({
         where: callLogDateFilter,
@@ -445,6 +466,11 @@ const exportCallsToExcel = async (req, res) => {
 
       console.log(`Total unique contacts for store "${store}" on date: ${allContactsForStoreAndDate.length} (${contactIdsFromCallLogs.size} with call logs, ${contactsCreatedOnDate.length} created on date)`);
     } else {
+      // Role-based filtering: Add user_id filter for agents (if not already in whereClause)
+      if (req.user && req.user.role !== 'admin' && !whereClause.user_id) {
+        whereClause.user_id = req.user.id;
+      }
+
       // Original logic when store filter is not provided or no date filter
       const allCallLogs = await CallLog.findAll({
         where: whereClause,
@@ -896,6 +922,17 @@ const getCallLogs = async (req, res) => {
         )
       );
     }
+
+    // Role-based filtering: Agents can only see their own call logs
+    if (req.user && req.user.role !== 'admin') {
+      // For agents and other non-admin roles, filter by user_id
+      whereConditions.push({
+        user_id: req.user.id,
+      });
+      console.log(`🔒 [CallLogs] Filtering call logs for user ${req.user.id} (role: ${req.user.role})`);
+    } else if (req.user && req.user.role === 'admin') {
+      console.log(`👑 [CallLogs] Admin user - showing all call logs`);
+    }
     
     // Build final where clause
     const whereClause = whereConditions.length > 0 ? { [Op.and]: whereConditions } : {};
@@ -918,6 +955,12 @@ const getCallLogs = async (req, res) => {
         ],
         ...(store && store !== 'all' ? { where: { store: store }, required: true } : {}),
       },
+      {
+        model: User,
+        as: 'user',
+        attributes: ['id', 'username', 'email'],
+        required: false, // LEFT JOIN - include even if no user
+      },
     ];
 
     // Get call logs with or without pagination
@@ -935,15 +978,37 @@ const getCallLogs = async (req, res) => {
 
     const { count, rows: callLogs } = await CallLog.findAndCountAll(queryOptions);
 
+    // Debug: Log first few call logs to verify user data is included
+    if (callLogs.length > 0) {
+      console.log('📋 [CallLogs] Total call logs found:', count);
+      console.log('📋 [CallLogs] Sample call logs with user data:');
+      callLogs.slice(0, 3).forEach((log, index) => {
+        console.log(`  [${index + 1}] ID: ${log.id}, user_id: ${log.user_id}, hasUser: ${!!log.user}, user:`, 
+          log.user ? { id: log.user.id, username: log.user.username, email: log.user.email } : 'null');
+      });
+    } else {
+      console.log('📋 [CallLogs] No call logs found');
+    }
+
     // Calculate pagination info
     const totalPages = usePagination ? Math.ceil(count / limitValue) : 1;
     const hasNextPage = usePagination ? page < totalPages : false;
     const hasPrevPage = usePagination ? page > 1 : false;
 
+    // Ensure user data is properly serialized
+    const serializedCallLogs = callLogs.map(log => {
+      const logData = log.toJSON ? log.toJSON() : log;
+      // Ensure user data is included
+      if (logData.user_id && !logData.user) {
+        console.warn(`⚠️ [CallLogs] Call log ${logData.id} has user_id ${logData.user_id} but no user data`);
+      }
+      return logData;
+    });
+
     res.json({
       success: true,
       data: {
-        callLogs,
+        callLogs: serializedCallLogs,
         pagination: {
           currentPage: parseInt(page),
           totalPages,
@@ -982,6 +1047,14 @@ const getDashboardSummary = async (req, res) => {
       whereClause.createdAt = {
         [Op.lte]: new Date(endDate),
       };
+    }
+
+    // Role-based filtering: Agents can only see their own call logs
+    if (req.user && req.user.role !== 'admin') {
+      whereClause.user_id = req.user.id;
+      console.log(`🔒 [DashboardSummary] Filtering summary for user ${req.user.id} (role: ${req.user.role})`);
+    } else if (req.user && req.user.role === 'admin') {
+      console.log(`👑 [DashboardSummary] Admin user - showing all summary`);
     }
 
     // Get contact statistics
@@ -1069,6 +1142,21 @@ const getDailyTrends = async (req, res) => {
   try {
     const { days = 7 } = req.query;
 
+    // Build where clause with role-based filtering
+    const whereClause = {
+      createdAt: {
+        [Op.gte]: new Date(Date.now() - (days - 1) * 24 * 60 * 60 * 1000),
+      },
+    };
+
+    // Role-based filtering: Agents can only see their own call logs
+    if (req.user && req.user.role !== 'admin') {
+      whereClause.user_id = req.user.id;
+      console.log(`🔒 [DailyTrends] Filtering trends for user ${req.user.id} (role: ${req.user.role})`);
+    } else if (req.user && req.user.role === 'admin') {
+      console.log(`👑 [DailyTrends] Admin user - showing all trends`);
+    }
+
     // Get daily call counts for the last N days
     const dailyTrends = await CallLog.findAll({
       attributes: [
@@ -1091,11 +1179,7 @@ const getDailyTrends = async (req, res) => {
           'failed',
         ],
       ],
-      where: {
-        createdAt: {
-          [Op.gte]: new Date(Date.now() - (days - 1) * 24 * 60 * 60 * 1000),
-        },
-      },
+      where: whereClause,
       group: [sequelize.fn('DATE', sequelize.col('createdAt'))],
       order: [[sequelize.fn('DATE', sequelize.col('createdAt')), 'ASC']],
       raw: true,
@@ -1136,6 +1220,21 @@ const getHourlyTrends = async (req, res) => {
     const endOfDay = new Date(targetDate);
     endOfDay.setHours(23, 59, 59, 999);
 
+    // Build where clause with role-based filtering
+    const whereClause = {
+      createdAt: {
+        [Op.between]: [startOfDay, endOfDay],
+      },
+    };
+
+    // Role-based filtering: Agents can only see their own call logs
+    if (req.user && req.user.role !== 'admin') {
+      whereClause.user_id = req.user.id;
+      console.log(`🔒 [HourlyTrends] Filtering trends for user ${req.user.id} (role: ${req.user.role})`);
+    } else if (req.user && req.user.role === 'admin') {
+      console.log(`👑 [HourlyTrends] Admin user - showing all trends`);
+    }
+
     const hourlyTrends = await CallLog.findAll({
       attributes: [
         [sequelize.fn('HOUR', sequelize.col('createdAt')), 'hour'],
@@ -1150,11 +1249,7 @@ const getHourlyTrends = async (req, res) => {
           'completed',
         ],
       ],
-      where: {
-        createdAt: {
-          [Op.between]: [startOfDay, endOfDay],
-        },
-      },
+      where: whereClause,
       group: [sequelize.fn('HOUR', sequelize.col('createdAt'))],
       order: [[sequelize.fn('HOUR', sequelize.col('createdAt')), 'ASC']],
       raw: true,

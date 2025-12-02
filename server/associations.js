@@ -19,6 +19,13 @@ if (!CallLog.associations.contact) {
   });
 }
 
+if (!CallLog.associations.user) {
+  CallLog.belongsTo(User, {
+    foreignKey: 'user_id',
+    as: 'user',
+  });
+}
+
 module.exports = {
   Contact,
   CallLog,

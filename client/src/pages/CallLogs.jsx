@@ -127,12 +127,18 @@ const CallLogs = () => {
         };
         
         const callLogs = data.data.callLogs.map((log) => {
-          console.log('🔍 Processing call log:', {
-            id: log.id,
-            status: log.status,
-            recording_url: log.recording_url,
-            has_recording: !!log.recording_url,
-          });
+          // Debug: Log user data for first few logs
+          if (data.data.callLogs.indexOf(log) < 3) {
+            console.log('🔍 Processing call log:', {
+              id: log.id,
+              status: log.status,
+              user_id: log.user_id,
+              user: log.user,
+              user_username: log.user?.username,
+              user_email: log.user?.email,
+              hasUser: !!log.user,
+            });
+          }
 
           return {
             id: log.id,
@@ -161,6 +167,7 @@ const CallLogs = () => {
             date: formatIndianDate(new Date(log.createdAt)),
             remark: log.contact?.remark || '',
             store: log.contact?.store || '',
+            user: log.user || null, // Include user information
           };
         });
         console.log('✅ Processed call logs:', callLogs);
@@ -1320,6 +1327,9 @@ const CallLogs = () => {
                   <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Remark
                   </th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    User
+                  </th>
                   {isAdmin && (
                     <th className="px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">
                       <div className="flex justify-end">Actions</div>
@@ -1443,6 +1453,18 @@ const CallLogs = () => {
                             : '-'}
                         </span>
                       </div>
+                    </td>
+
+                    {/* User */}
+                    <td className="px-4 py-4">
+                      <div className="text-sm text-gray-900">
+                        {call.user?.username || call.user?.email || 'N/A'}
+                      </div>
+                      {call.user?.email && call.user?.username && (
+                        <div className="text-xs text-gray-500">
+                          {call.user.email}
+                        </div>
+                      )}
                     </td>
 
                     {/* Actions */}

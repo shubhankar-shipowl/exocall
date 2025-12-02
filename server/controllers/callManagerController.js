@@ -109,6 +109,7 @@ const startCalls = async (req, res) => {
             attempt_no: contact.attempts + 1,
             status: 'Initiated',
             exotel_call_sid: callSid,
+            user_id: req.user?.id || null, // Store which user made the call
           });
 
           results.push({
@@ -146,6 +147,7 @@ const startCalls = async (req, res) => {
           contact_id: contact.id,
           attempt_no: contact.attempts + 1,
           status: 'Failed',
+          user_id: req.user?.id || null, // Store which user made the call
         });
 
         results.push({

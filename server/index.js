@@ -227,6 +227,20 @@ const startServer = async () => {
 
     console.log('✅ Database schema verified');
 
+    // Check if user_id column exists in call_logs
+    const [callLogColumns] = await sequelize.query('SHOW COLUMNS FROM call_logs');
+    const hasUserId = callLogColumns.some((c) => c.Field === 'user_id');
+    if (!hasUserId) {
+      console.log('⚠️  Adding user_id column to call_logs...');
+      await sequelize.query(
+        `ALTER TABLE call_logs 
+         ADD COLUMN user_id INT NULL,
+         ADD INDEX idx_user_id (user_id),
+         ADD FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL`,
+      );
+      console.log('✅ Added user_id to call_logs');
+    }
+
     // Force clear module cache for models to ensure fresh model definitions
     const contactModelPath = require.resolve('./models/Contact');
     if (require.cache[contactModelPath]) {
@@ -237,6 +251,11 @@ const startServer = async () => {
     if (require.cache[callLogModelPath]) {
       delete require.cache[callLogModelPath];
       console.log('🔄 Cleared CallLog model cache');
+    }
+    const callModelPath = require.resolve('./models/Call');
+    if (require.cache[callModelPath]) {
+      delete require.cache[callModelPath];
+      console.log('🔄 Cleared Call model cache');
     }
     const associationsPath = require.resolve('./associations');
     if (require.cache[associationsPath]) {

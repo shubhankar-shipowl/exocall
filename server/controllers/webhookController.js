@@ -222,14 +222,9 @@ const handleExotelWebhook = async (req, res) => {
       updateData.attempts = contact.attempts + 1;
     }
 
-    // Add duration if provided (ONLY use ConversationDuration - it's the actual talk time)
-    // ConversationDuration = actual conversation time (matches recording length and Exotel dashboard)
-    // Duration = total call time (includes ringing/connection time) - DO NOT USE THIS
-    // IMPORTANT: Only "Completed" status calls should have duration > 0
-    // NOTE: We MUST use ConversationDuration only, because Duration includes ringing time
-    // and won't match what Exotel dashboard shows (which is conversation time)
-    const durationField = ConversationDuration; // Only use ConversationDuration, never Duration
-    let durationInSeconds = 0;
+    // IMPORTANT: Always fetch exact duration from Exotel API for real-time accuracy
+    // Only "Completed" status calls should have duration > 0
+    // All other statuses (Failed, Busy, No Answer, etc.) should have duration = 0
     
     // Only "Completed" status calls should have duration > 0 (call actually connected)
     const isCompleted = contactStatus === 'Completed' || 
@@ -238,29 +233,10 @@ const handleExotelWebhook = async (req, res) => {
                         Outcome === 'Call was successful' ||
                         Outcome === 'call was successful';
     
-    if (isCompleted && durationField) {
-      // Handle different duration formats
-      if (typeof durationField === 'string' && durationField.includes(':')) {
-        // Handle "HH:MM:SS" format from Exotel dashboard
-        const timeParts = durationField.split(':');
-        if (timeParts.length === 3) {
-          const hours = parseInt(timeParts[0]) || 0;
-          const minutes = parseInt(timeParts[1]) || 0;
-          const seconds = parseInt(timeParts[2]) || 0;
-          durationInSeconds = hours * 3600 + minutes * 60 + seconds;
-        }
-      } else if (!isNaN(parseInt(durationField))) {
-        // Handle numeric duration (already in seconds)
-        durationInSeconds = parseInt(durationField);
-      }
-
-      if (durationInSeconds > 0) {
-        updateData.duration = durationInSeconds;
-        console.log(`✅ [Webhook] Duration from webhook: ${durationInSeconds} seconds (${ConversationDuration ? 'ConversationDuration' : 'Duration'})`);
-      }
-    } else if (!isCompleted) {
-      // Force duration to 0 for all non-completed calls
+    // Force duration to 0 for all non-completed calls (not answered, failed, etc.)
+    if (!isCompleted) {
       updateData.duration = 0;
+      console.log(`✅ [Webhook] Setting duration to 0 for ${contactStatus} call (call was not answered/completed)`);
     }
 
     // Add recording URL if provided
@@ -268,10 +244,10 @@ const handleExotelWebhook = async (req, res) => {
       updateData.recording_url = RecordingUrl;
     }
     
-    // If duration is missing or 0 for completed calls, fetch from Exotel API
-    if (isCompleted && (!durationInSeconds || durationInSeconds === 0)) {
+    // ALWAYS fetch duration from Exotel API for completed calls to get exact real-time data
+    if (isCompleted) {
       try {
-        console.log(`🔄 [Webhook] Duration missing for completed call (CallSid: ${CallSid}), fetching from Exotel API...`);
+        console.log(`🔄 [Webhook] Fetching exact duration from Exotel API for completed call (CallSid: ${CallSid})...`);
         
         const Settings = require('../models/Settings');
         let settings = null;
@@ -300,12 +276,12 @@ const handleExotelWebhook = async (req, res) => {
         const apiToken = settings?.api_token || process.env.EXOTEL_API_TOKEN || process.env.EXOTEL_TOKEN;
         
         if (exotelSid && apiKey && apiToken) {
-          // Fetch call details from Exotel API
+          // Fetch call details from Exotel API to get exact real-time duration
           const axios = require('axios');
           
           const exotelApiUrl = `https://${apiKey}:${apiToken}@api.exotel.com/v1/Accounts/${exotelSid}/Calls/${CallSid}.json`;
           
-          console.log(`📡 [Webhook] Fetching call details from: ${exotelApiUrl.replace(/\/\/[^:]+:[^@]+@/, '//***:***@')}`);
+          console.log(`📡 [Webhook] Fetching exact call details from Exotel API...`);
           
           const apiResponse = await axios.get(exotelApiUrl, {
             timeout: 10000,
@@ -315,12 +291,12 @@ const handleExotelWebhook = async (req, res) => {
           
           if (apiResponse.data && apiResponse.data.Call) {
             const callData = apiResponse.data.Call;
-            // ONLY use ConversationDuration (actual talk time, matches Exotel dashboard)
-            // Do NOT use Duration as it includes ringing time and won't match the dashboard
+            
+            // ONLY use ConversationDuration (actual talk time, matches Exotel dashboard exactly)
+            // This is the exact duration shown in Exotel dashboard
             let fetchedDuration = callData.ConversationDuration || 0;
             
             // If ConversationDuration is not available, try to calculate from StartTime/EndTime
-            // This gives us the actual call duration (time between start and end)
             if (!fetchedDuration && callData.StartTime && callData.EndTime) {
               try {
                 const startTime = new Date(callData.StartTime);
@@ -342,30 +318,34 @@ const handleExotelWebhook = async (req, res) => {
               const totalDuration = callData.Duration || callData.CallDuration || 0;
               if (totalDuration > 0) {
                 console.warn(`   ⚠️  ConversationDuration not available, using Duration (${totalDuration}s) - this may not match Exotel dashboard`);
-                console.warn(`   ⚠️  Duration includes ringing time, so it will be higher than conversation time`);
                 fetchedDuration = totalDuration;
               }
             }
             
             if (fetchedDuration && parseInt(fetchedDuration) > 0) {
-              durationInSeconds = parseInt(fetchedDuration);
+              const durationInSeconds = parseInt(fetchedDuration);
               updateData.duration = durationInSeconds;
-              console.log(`✅ [Webhook] Fetched conversation duration from Exotel API: ${durationInSeconds} seconds`);
+              console.log(`✅ [Webhook] Fetched exact duration from Exotel API: ${durationInSeconds} seconds (matches Exotel dashboard)`);
             } else {
-              console.warn(`⚠️ [Webhook] Exotel API returned duration as 0 or missing:`, callData);
+              // If no duration found, set to 0 (call might not have actually connected)
+              updateData.duration = 0;
+              console.warn(`⚠️ [Webhook] Exotel API returned duration as 0 or missing, setting to 0`);
             }
           } else {
             console.warn(`⚠️ [Webhook] Exotel API response format unexpected:`, apiResponse.data);
+            updateData.duration = 0;
           }
         } else {
           console.warn(`⚠️ [Webhook] Missing Exotel credentials to fetch duration`);
+          updateData.duration = 0;
         }
       } catch (fetchError) {
         console.error('❌ [Webhook] Failed to fetch duration from Exotel API:', fetchError.message);
         if (fetchError.response) {
           console.error('❌ [Webhook] Exotel API error response:', fetchError.response.status, fetchError.response.data);
         }
-        // Continue without duration - don't fail the webhook
+        // Set duration to 0 if API fetch fails
+        updateData.duration = 0;
       }
     }
 
@@ -389,10 +369,17 @@ const handleExotelWebhook = async (req, res) => {
       
       let finalDuration;
       if (isCompletedForLog) {
-        // Use fetched duration if available, otherwise keep existing duration if it's > 0
-        finalDuration = updateData.duration !== undefined ? updateData.duration : (existingCallLog.duration && existingCallLog.duration > 0 ? existingCallLog.duration : 'NULL');
+        // Always use the fetched duration from API (real-time exact data)
+        // If duration was fetched from API, use it; otherwise keep existing if > 0
+        if (updateData.duration !== undefined) {
+          finalDuration = updateData.duration;
+        } else if (existingCallLog.duration && existingCallLog.duration > 0) {
+          finalDuration = existingCallLog.duration;
+        } else {
+          finalDuration = 'NULL';
+        }
       } else {
-        // All non-completed calls should have duration = 0
+        // All non-completed calls (not answered, failed, etc.) should have duration = 0
         finalDuration = 0;
       }
       
@@ -407,8 +394,8 @@ const handleExotelWebhook = async (req, res) => {
         WHERE id = ${existingCallLog.id}`,
       );
       
-      if (updateData.duration !== undefined && updateData.duration > 0) {
-        console.log(`✅ [Webhook] Updated call log ${existingCallLog.id} with duration: ${updateData.duration} seconds`);
+      if (updateData.duration !== undefined) {
+        console.log(`✅ [Webhook] Updated call log ${existingCallLog.id} with duration: ${updateData.duration} seconds (${isCompletedForLog ? 'Completed' : 'Not answered'})`);
       }
     } else {
       // Create new call log entry using raw SQL

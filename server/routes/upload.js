@@ -506,54 +506,63 @@ router.delete("/clear-by-date", async (req, res) => {
       });
     }
 
-    const whereClause = {
-      createdAt: {
-        [require("sequelize").Op.between]: [
-          new Date(startDate),
-          new Date(endDate),
-        ],
-      },
-    };
-
     // Get count before deletion using raw SQL
     const { sequelize } = require("../config/database");
-    const startDateStr = new Date(startDate)
-      .toISOString()
-      .slice(0, 19)
-      .replace("T", " ");
-    const endDateStr = new Date(endDate)
-      .toISOString()
-      .slice(0, 19)
-      .replace("T", " ");
+    
+    // Parse dates directly from YYYY-MM-DD format to avoid timezone issues
+    // Extract just the date part (YYYY-MM-DD) without timezone conversion
+    const startDateOnly = startDate.split('T')[0]; // Get YYYY-MM-DD part
+    const endDateOnly = endDate.split('T')[0]; // Get YYYY-MM-DD part
+    
+    console.log(`🔍 Checking date range: ${startDateOnly} to ${endDateOnly}`);
 
+    // First, let's check what dates actually exist in the database
+    const [dateCheckResult] = await sequelize.query(`
+      SELECT DATE(createdAt) as date, COUNT(*) as count 
+      FROM contacts 
+      WHERE DATE(createdAt) BETWEEN '${startDateOnly}' AND '${endDateOnly}'
+      GROUP BY DATE(createdAt)
+      ORDER BY date
+    `);
+    
+    console.log(`📅 Dates found in range:`, dateCheckResult);
+
+    // Use DATE() function to compare dates properly (ignoring time and timezone)
+    // This ensures we only match the exact date range specified
     const [countResult] = await sequelize.query(`
       SELECT COUNT(*) as count FROM contacts 
-      WHERE createdAt BETWEEN '${startDateStr}' AND '${endDateStr}'
+      WHERE DATE(createdAt) BETWEEN '${startDateOnly}' AND '${endDateOnly}'
     `);
     const contactsCount = countResult[0].count;
+
+    console.log(`📊 Found ${contactsCount} contacts in date range`);
 
     if (contactsCount === 0) {
       return res.json({
         success: true,
         message: "No contacts found in the specified date range",
         deletedCount: 0,
+        dateRange: { startDate, endDate },
+        availableDates: dateCheckResult,
       });
     }
 
     // Delete contacts in the date range using raw SQL
+    // Use DATE() function to compare dates properly (ignoring time and timezone)
+    // This ensures we only delete the exact date range specified
     // First delete call logs that reference these contacts
     await sequelize.query(`
       DELETE FROM call_logs 
       WHERE contact_id IN (
         SELECT id FROM contacts 
-        WHERE createdAt BETWEEN '${startDateStr}' AND '${endDateStr}'
+        WHERE DATE(createdAt) BETWEEN '${startDateOnly}' AND '${endDateOnly}'
       )
     `);
 
     // Then delete the contacts
     await sequelize.query(`
       DELETE FROM contacts 
-      WHERE createdAt BETWEEN '${startDateStr}' AND '${endDateStr}'
+      WHERE DATE(createdAt) BETWEEN '${startDateOnly}' AND '${endDateOnly}'
     `);
 
     res.json({

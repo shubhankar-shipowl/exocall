@@ -2,22 +2,11 @@ const Contact = require('../models/Contact');
 const CallLog = require('../models/CallLog');
 const { sequelize } = require('../config/database');
 
-// Ensure fresh database connection for webhook
-const getFreshConnection = async () => {
-  try {
-    await sequelize.authenticate();
-    return sequelize;
-  } catch (error) {
-    console.error('Database connection error:', error);
-    throw error;
-  }
-};
-
 // Handle Exotel webhook for call status updates
 const handleExotelWebhook = async (req, res) => {
   try {
-    // Ensure fresh database connection
-    await getFreshConnection();
+    // Verify connection is alive (uses existing connection pool)
+    await sequelize.authenticate();
 
     // Extract parameters according to Exotel StatusCallback documentation
     const {
@@ -60,9 +49,8 @@ const handleExotelWebhook = async (req, res) => {
       if (contactIdMatch) {
         const contactId = contactIdMatch[1];
 
-        // Try direct SQL query as fallback
+        // Try direct SQL query as fallback (using singleton connection)
         try {
-          const { sequelize } = require('../config/database');
           const [results] = await sequelize.query(
             'SELECT * FROM contacts WHERE id = ?',
             { replacements: [contactId] },

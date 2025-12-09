@@ -2,8 +2,8 @@ const express = require('express');
 const cors = require('cors');
 require('dotenv').config();
 
-// Import database connection
-const { sequelize, testConnection } = require('./config/database');
+// Import database connection (singleton instance)
+const { sequelize, testConnection, closeConnection } = require('./config/database');
 
 // Models will be loaded after schema verification to ensure fresh definitions
 
@@ -131,9 +131,9 @@ const startServer = async () => {
     // Test database connection
     await testConnection();
 
-    // Force refresh database connection and verify schema
+    // Verify schema using the singleton connection
     console.log('🔄 Verifying database schema...');
-    const { sequelize } = require('./config/database');
+    // Use the already imported sequelize instance (singleton)
 
     // Check if required columns exist
     const [columns] = await sequelize.query('SHOW COLUMNS FROM contacts');
@@ -269,12 +269,39 @@ const startServer = async () => {
     console.log('⚠️  Schema sync disabled - manage schema manually');
 
     // Start the server
-    app.listen(PORT, () => {
+    const server = app.listen(PORT, () => {
       console.log(`🚀 Server running on port ${PORT}`);
       console.log(`📊 Dashboard available at http://localhost:${PORT}`);
     });
+
+    // Graceful shutdown handlers
+    const gracefulShutdown = async (signal) => {
+      console.log(`\n${signal} received. Starting graceful shutdown...`);
+      
+      // Stop accepting new requests
+      server.close(async () => {
+        console.log('✅ HTTP server closed');
+        
+        // Close database connections
+        await closeConnection();
+        
+        console.log('✅ Graceful shutdown completed');
+        process.exit(0);
+      });
+
+      // Force shutdown after 10 seconds
+      setTimeout(() => {
+        console.error('❌ Forced shutdown after timeout');
+        process.exit(1);
+      }, 10000);
+    };
+
+    process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+    process.on('SIGINT', () => gracefulShutdown('SIGINT'));
   } catch (error) {
     console.error('❌ Failed to start server:', error);
+    // Close database connections on startup failure
+    await closeConnection().catch(console.error);
     process.exit(1);
   }
 };

@@ -685,9 +685,22 @@ const CallTable = () => {
       const contact = contacts.find((c) => c.id === contactId);
       if (!contact) {
         console.error('Contact not found for ID:', contactId);
-        toast.error('Contact not found');
+        toast.error('Contact not found', {
+          position: "top-right",
+          autoClose: 3000,
+        });
         return;
       }
+
+      // Show toast immediately when call button is clicked
+      toast.info(`📞 Initiating call to ${contactName}...`, {
+        position: "top-right",
+        autoClose: 2000,
+        hideProgressBar: false,
+        closeOnClick: true,
+        pauseOnHover: true,
+        draggable: true,
+      });
 
       console.log('Opening call modal for contact:', contact);
 
@@ -817,9 +830,15 @@ const CallTable = () => {
       // Add contact to calling set and show immediate feedback
       setCallingContacts((prev) => new Set(prev).add(contactId));
 
-      // Add small delay to ensure toast appears after modal is rendered
-      await new Promise((resolve) => setTimeout(resolve, 100));
-      toast.info(`Calling ${contactName}...`);
+      // Show toast immediately when call is initiated
+      toast.info(`📞 Calling ${contactName}...`, {
+        position: "top-right",
+        autoClose: 3000,
+        hideProgressBar: false,
+        closeOnClick: true,
+        pauseOnHover: true,
+        draggable: true,
+      });
 
       const response = await fetch(`/api/contacts/${contactId}/call`, {
         method: 'POST',
@@ -852,7 +871,15 @@ const CallTable = () => {
         }));
 
         toast.success(
-          `Call initiated for ${contactName}! Please wait for the call to connect.`,
+          `✅ Call initiated for ${contactName}! Please wait for the call to connect.`,
+          {
+            position: "top-right",
+            autoClose: 5000,
+            hideProgressBar: false,
+            closeOnClick: true,
+            pauseOnHover: true,
+            draggable: true,
+          }
         );
       } else if (response.ok && result.success === false) {
         // Handle explicit failure from backend

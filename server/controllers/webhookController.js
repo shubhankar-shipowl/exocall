@@ -9,7 +9,10 @@ const handleExotelWebhook = async (req, res) => {
     await sequelize.authenticate();
 
     // Log full webhook payload for debugging
-    console.log('📥 [Webhook] Received Exotel webhook:', JSON.stringify(req.body, null, 2));
+    console.log(
+      '📥 [Webhook] Received Exotel webhook:',
+      JSON.stringify(req.body, null, 2),
+    );
 
     // Extract parameters according to Exotel StatusCallback documentation
     const {
@@ -65,16 +68,16 @@ const handleExotelWebhook = async (req, res) => {
             if (!contact) {
               // Fallback: Create a plain object (will use raw SQL updates)
               contact = {
-              id: results[0].id,
-              name: results[0].name,
-              phone: results[0].phone,
-              exotel_call_sid: results[0].exotel_call_sid,
-              status: results[0].status,
-              attempts: results[0].attempts,
-              duration: results[0].duration,
-              recording_url: results[0].recording_url,
-              last_attempt: results[0].last_attempt,
-            };
+                id: results[0].id,
+                name: results[0].name,
+                phone: results[0].phone,
+                exotel_call_sid: results[0].exotel_call_sid,
+                status: results[0].status,
+                attempts: results[0].attempts,
+                duration: results[0].duration,
+                recording_url: results[0].recording_url,
+                last_attempt: results[0].last_attempt,
+              };
             }
           }
         } catch (sqlError) {
@@ -93,8 +96,10 @@ const handleExotelWebhook = async (req, res) => {
 
     // Map Exotel status/outcome to our contact status
     let contactStatus;
-    
-    console.log(`🔍 [Webhook] Status mapping - Status: "${Status}", Outcome: "${Outcome}"`);
+
+    console.log(
+      `🔍 [Webhook] Status mapping - Status: "${Status}", Outcome: "${Outcome}"`,
+    );
 
     // Helper: try to infer "Switched Off"/"Unreachable" cases from free-text fields
     const rawTextFields = [
@@ -186,8 +191,12 @@ const handleExotelWebhook = async (req, res) => {
     } else {
       contactStatus = 'Failed';
     }
-    
-    console.log(`✅ [Webhook] Mapped status: "${Status || Outcome}" -> "${contactStatus}"`);
+
+    console.log(
+      `✅ [Webhook] Mapped status: "${
+        Status || Outcome
+      }" -> "${contactStatus}"`,
+    );
 
     // Update contact record
     // IMPORTANT: Always update status from webhook to match Exotel dashboard
@@ -196,10 +205,12 @@ const handleExotelWebhook = async (req, res) => {
       last_attempt: new Date(),
       status: contactStatus, // Always update status from webhook to match Exotel
     };
-    
+
     // Log if override exists but we're updating anyway
     if (contact.status_override && contactStatus === 'Completed') {
-      console.log(`⚠️ [Webhook] Override exists but updating to Completed to match Exotel dashboard`);
+      console.log(
+        `⚠️ [Webhook] Override exists but updating to Completed to match Exotel dashboard`,
+      );
     }
 
     // Only increment attempts for final statuses (not "In Progress" or "Initiated")
@@ -208,12 +219,13 @@ const handleExotelWebhook = async (req, res) => {
     }
 
     // Check if call is completed
-    const isCompleted = contactStatus === 'Completed' || 
-                        contactStatus === 'completed' ||
-                        Status === 'completed' ||
-                        Status === 'Completed' ||
-                        Outcome === 'Call was successful' ||
-                        Outcome === 'call was successful';
+    const isCompleted =
+      contactStatus === 'Completed' ||
+      contactStatus === 'completed' ||
+      Status === 'completed' ||
+      Status === 'Completed' ||
+      Outcome === 'Call was successful' ||
+      Outcome === 'call was successful';
 
     // Add recording URL if provided
     if (RecordingUrl) {
@@ -223,16 +235,20 @@ const handleExotelWebhook = async (req, res) => {
     // FIRST: Try to get duration directly from webhook body (most reliable)
     // Exotel sends Duration or ConversationDuration in the webhook payload
     let webhookDuration = null;
-    
+
     // Priority 1: ConversationDuration (actual talk time, matches Exotel dashboard)
     if (ConversationDuration !== undefined && ConversationDuration !== null) {
       webhookDuration = parseInt(ConversationDuration) || 0;
-      console.log(`📥 [Webhook] Using ConversationDuration from webhook: ${webhookDuration} seconds`);
+      console.log(
+        `📥 [Webhook] Using ConversationDuration from webhook: ${webhookDuration} seconds`,
+      );
     }
     // Priority 2: Duration field from webhook
     else if (Duration !== undefined && Duration !== null) {
       webhookDuration = parseInt(Duration) || 0;
-      console.log(`📥 [Webhook] Using Duration from webhook: ${webhookDuration} seconds`);
+      console.log(
+        `📥 [Webhook] Using Duration from webhook: ${webhookDuration} seconds`,
+      );
     }
     // Priority 3: Calculate from StartTime/EndTime if available
     else if (StartTime && EndTime) {
@@ -242,11 +258,15 @@ const handleExotelWebhook = async (req, res) => {
         if (!isNaN(startTime.getTime()) && !isNaN(endTime.getTime())) {
           webhookDuration = Math.floor((endTime - startTime) / 1000);
           if (webhookDuration > 0) {
-            console.log(`📊 [Webhook] Calculated duration from webhook timestamps: ${webhookDuration} seconds`);
+            console.log(
+              `📊 [Webhook] Calculated duration from webhook timestamps: ${webhookDuration} seconds`,
+            );
           }
         }
       } catch (timeError) {
-        console.warn(`⚠️ [Webhook] Failed to calculate duration from timestamps: ${timeError.message}`);
+        console.warn(
+          `⚠️ [Webhook] Failed to calculate duration from timestamps: ${timeError.message}`,
+        );
       }
     }
 
@@ -255,137 +275,198 @@ const handleExotelWebhook = async (req, res) => {
       // For completed calls, use webhook duration if available, otherwise fetch from API
       if (webhookDuration !== null && webhookDuration > 0) {
         updateData.duration = webhookDuration;
-        console.log(`✅ [Webhook] Set duration from webhook: ${webhookDuration} seconds (Completed call)`);
+        console.log(
+          `✅ [Webhook] Set duration from webhook: ${webhookDuration} seconds (Completed call)`,
+        );
       } else {
         // Fallback to API fetch if webhook doesn't have duration
-        console.log(`🔄 [Webhook] Duration not in webhook, fetching from Exotel API...`);
-        try {
-        console.log(`🔄 [Webhook] Fetching exact duration from Exotel API for completed call (CallSid: ${CallSid})...`);
-        
-        const Settings = require('../models/Settings');
-        let settings = null;
-        
-        // Try to get user-specific settings from the call log
-        const [callLogs] = await sequelize.query(
-          `SELECT user_id FROM call_logs WHERE contact_id = ${contact.id} AND exotel_call_sid = '${CallSid}' LIMIT 1`
+        console.log(
+          `🔄 [Webhook] Duration not in webhook, fetching from Exotel API...`,
         );
-        
-        if (callLogs.length > 0 && callLogs[0].user_id) {
-          settings = await Settings.findOne({
-            where: { user_id: callLogs[0].user_id },
-            order: [['createdAt', 'DESC']],
-          });
-        }
-        
-        // Fallback to global settings or env
-        if (!settings) {
-          settings = await Settings.findOne({
-            order: [['createdAt', 'DESC']],
-          });
-        }
-        
-        const exotelSid = settings?.exotel_sid || process.env.EXOTEL_SID;
-        const apiKey = settings?.api_key || process.env.EXOTEL_API_KEY || process.env.EXOTEL_KEY;
-        const apiToken = settings?.api_token || process.env.EXOTEL_API_TOKEN || process.env.EXOTEL_TOKEN;
-        
-        if (exotelSid && apiKey && apiToken) {
-          // Fetch call details from Exotel API to get exact real-time duration
-          const axios = require('axios');
-          
-          const exotelApiUrl = `https://${apiKey}:${apiToken}@api.exotel.com/v1/Accounts/${exotelSid}/Calls/${CallSid}.json`;
-          
-          console.log(`📡 [Webhook] Fetching exact call details from Exotel API...`);
-          
-          const apiResponse = await axios.get(exotelApiUrl, {
-            timeout: 10000,
-          });
-          
-          console.log(`📥 [Webhook] Exotel API response:`, JSON.stringify(apiResponse.data, null, 2));
-          
-          if (apiResponse.data && apiResponse.data.Call) {
-            const callData = apiResponse.data.Call;
-            
-            // ONLY use ConversationDuration (actual talk time, matches Exotel dashboard exactly)
-            // This is the exact duration shown in Exotel dashboard
-            let fetchedDuration = callData.ConversationDuration || 0;
-            
-            // If ConversationDuration is not available, try to calculate from StartTime/EndTime
-            if (!fetchedDuration && callData.StartTime && callData.EndTime) {
-              try {
-                const startTime = new Date(callData.StartTime);
-                const endTime = new Date(callData.EndTime);
-                if (!isNaN(startTime.getTime()) && !isNaN(endTime.getTime())) {
-                  const calculatedDuration = Math.floor((endTime - startTime) / 1000);
-                  if (calculatedDuration > 0) {
-                    fetchedDuration = calculatedDuration;
-                    console.log(`   📊 Calculated duration from timestamps: ${fetchedDuration} seconds`);
+        try {
+          console.log(
+            `🔄 [Webhook] Fetching exact duration from Exotel API for completed call (CallSid: ${CallSid})...`,
+          );
+
+          const Settings = require('../models/Settings');
+          let settings = null;
+
+          // Try to get user-specific settings from the call log
+          const [callLogs] = await sequelize.query(
+            `SELECT user_id FROM call_logs WHERE contact_id = ${contact.id} AND exotel_call_sid = '${CallSid}' LIMIT 1`,
+          );
+
+          if (callLogs.length > 0 && callLogs[0].user_id) {
+            settings = await Settings.findOne({
+              where: { user_id: callLogs[0].user_id },
+              order: [['createdAt', 'DESC']],
+            });
+          }
+
+          // Fallback to global settings or env
+          if (!settings) {
+            settings = await Settings.findOne({
+              order: [['createdAt', 'DESC']],
+            });
+          }
+
+          const exotelSid = settings?.exotel_sid || process.env.EXOTEL_SID;
+          const apiKey =
+            settings?.api_key ||
+            process.env.EXOTEL_API_KEY ||
+            process.env.EXOTEL_KEY;
+          const apiToken =
+            settings?.api_token ||
+            process.env.EXOTEL_API_TOKEN ||
+            process.env.EXOTEL_TOKEN;
+
+          if (exotelSid && apiKey && apiToken) {
+            // Fetch call details from Exotel API to get exact real-time duration
+            const axios = require('axios');
+
+            const exotelApiUrl = `https://${apiKey}:${apiToken}@api.exotel.com/v1/Accounts/${exotelSid}/Calls/${CallSid}.json`;
+
+            console.log(
+              `📡 [Webhook] Fetching exact call details from Exotel API...`,
+            );
+
+            const apiResponse = await axios.get(exotelApiUrl, {
+              timeout: 10000,
+            });
+
+            console.log(
+              `📥 [Webhook] Exotel API response:`,
+              JSON.stringify(apiResponse.data, null, 2),
+            );
+
+            if (apiResponse.data && apiResponse.data.Call) {
+              const callData = apiResponse.data.Call;
+
+              // ONLY use ConversationDuration (actual talk time, matches Exotel dashboard exactly)
+              // This is the exact duration shown in Exotel dashboard
+              let fetchedDuration = callData.ConversationDuration || 0;
+
+              // If ConversationDuration is not available, try to calculate from StartTime/EndTime
+              if (!fetchedDuration && callData.StartTime && callData.EndTime) {
+                try {
+                  const startTime = new Date(callData.StartTime);
+                  const endTime = new Date(callData.EndTime);
+                  if (
+                    !isNaN(startTime.getTime()) &&
+                    !isNaN(endTime.getTime())
+                  ) {
+                    const calculatedDuration = Math.floor(
+                      (endTime - startTime) / 1000,
+                    );
+                    if (calculatedDuration > 0) {
+                      fetchedDuration = calculatedDuration;
+                      console.log(
+                        `   📊 Calculated duration from timestamps: ${fetchedDuration} seconds`,
+                      );
+                    }
                   }
+                } catch (timeError) {
+                  console.warn(
+                    `   ⚠️  Failed to calculate from timestamps: ${timeError.message}`,
+                  );
                 }
-              } catch (timeError) {
-                console.warn(`   ⚠️  Failed to calculate from timestamps: ${timeError.message}`);
               }
-            }
-            
-            // Last resort: use Duration field (but log a warning as it's not accurate)
-            if (!fetchedDuration) {
-              const totalDuration = callData.Duration || callData.CallDuration || 0;
-              if (totalDuration > 0) {
-                console.warn(`   ⚠️  ConversationDuration not available, using Duration (${totalDuration}s) - this may not match Exotel dashboard`);
-                fetchedDuration = totalDuration;
+
+              // Last resort: use Duration field (but log a warning as it's not accurate)
+              if (!fetchedDuration) {
+                const totalDuration =
+                  callData.Duration || callData.CallDuration || 0;
+                if (totalDuration > 0) {
+                  console.warn(
+                    `   ⚠️  ConversationDuration not available, using Duration (${totalDuration}s) - this may not match Exotel dashboard`,
+                  );
+                  fetchedDuration = totalDuration;
+                }
               }
-            }
-            
-            if (fetchedDuration && parseInt(fetchedDuration) > 0) {
-              const durationInSeconds = parseInt(fetchedDuration);
-              updateData.duration = durationInSeconds;
-              console.log(`✅ [Webhook] Fetched duration from Exotel API: ${durationInSeconds} seconds`);
+
+              if (fetchedDuration && parseInt(fetchedDuration) > 0) {
+                const durationInSeconds = parseInt(fetchedDuration);
+                updateData.duration = durationInSeconds;
+                console.log(
+                  `✅ [Webhook] Fetched duration from Exotel API: ${durationInSeconds} seconds`,
+                );
+              } else {
+                // If no duration found, set to 0 (call might not have actually connected)
+                updateData.duration = 0;
+                console.warn(
+                  `⚠️ [Webhook] Exotel API returned duration as 0 or missing, setting to 0`,
+                );
+              }
             } else {
-              // If no duration found, set to 0 (call might not have actually connected)
+              console.warn(
+                `⚠️ [Webhook] Exotel API response format unexpected:`,
+                apiResponse.data,
+              );
               updateData.duration = 0;
-              console.warn(`⚠️ [Webhook] Exotel API returned duration as 0 or missing, setting to 0`);
             }
           } else {
-            console.warn(`⚠️ [Webhook] Exotel API response format unexpected:`, apiResponse.data);
+            console.warn(
+              `⚠️ [Webhook] Missing Exotel credentials to fetch duration`,
+            );
             updateData.duration = 0;
           }
-        } else {
-          console.warn(`⚠️ [Webhook] Missing Exotel credentials to fetch duration`);
+        } catch (fetchError) {
+          console.error(
+            '❌ [Webhook] Failed to fetch duration from Exotel API:',
+            fetchError.message,
+          );
+          if (fetchError.response) {
+            console.error(
+              '❌ [Webhook] Exotel API error response:',
+              fetchError.response.status,
+              fetchError.response.data,
+            );
+          }
+          // Set duration to 0 if API fetch fails
           updateData.duration = 0;
         }
-      } catch (fetchError) {
-        console.error('❌ [Webhook] Failed to fetch duration from Exotel API:', fetchError.message);
-        if (fetchError.response) {
-          console.error('❌ [Webhook] Exotel API error response:', fetchError.response.status, fetchError.response.data);
-        }
-        // Set duration to 0 if API fetch fails
-        updateData.duration = 0;
-      }
       } // Close else block for webhookDuration check
     } else {
       // For non-completed calls, duration should be 0
       updateData.duration = 0;
-      console.log(`✅ [Webhook] Setting duration to 0 for ${contactStatus} call (not completed)`);
+      console.log(
+        `✅ [Webhook] Setting duration to 0 for ${contactStatus} call (not completed)`,
+      );
     }
 
     // Update contact table - always use Sequelize for consistency
     const contactId = contact.id;
-    
+
     // Reload contact as Sequelize model if it's a plain object
     if (typeof contact.update !== 'function') {
       contact = await Contact.findByPk(contactId);
       if (!contact) {
-        console.error(`❌ [Webhook] Contact ${contactId} not found in database`);
+        console.error(
+          `❌ [Webhook] Contact ${contactId} not found in database`,
+        );
         return res.status(404).json({ error: 'Contact not found' });
       }
     }
-    
+
     // Update contact using Sequelize (handles all fields correctly)
     await contact.update(updateData);
-    console.log(`✅ [Webhook] Updated contact ${contactId}: status=${updateData.status}, duration=${updateData.duration}, recording=${updateData.recording_url ? 'yes' : 'no'}`);
-    
+    console.log(
+      `✅ [Webhook] Updated contact ${contactId}: status=${
+        updateData.status
+      }, duration=${updateData.duration}, recording=${
+        updateData.recording_url ? 'yes' : 'no'
+      }`,
+    );
+
     // Reload contact to verify the update
     await contact.reload();
-    console.log(`✅ [Webhook] Verified contact update - status: ${contact.status}, duration: ${contact.duration}, recording_url: ${contact.recording_url ? 'present' : 'none'}`);
+    console.log(
+      `✅ [Webhook] Verified contact update - status: ${
+        contact.status
+      }, duration: ${contact.duration}, recording_url: ${
+        contact.recording_url ? 'present' : 'none'
+      }`,
+    );
 
     // Update contact's exotel_call_sid if not already set
     if (!contact.exotel_call_sid) {
@@ -395,38 +476,66 @@ const handleExotelWebhook = async (req, res) => {
     // Find the most recent call log for this contact and CallSid to update it
     // IMPORTANT: Use exotel_call_sid to find the exact call log entry
     const [existingLogs] = await sequelize.query(
-      `SELECT * FROM call_logs WHERE contact_id = ${contactId} AND exotel_call_sid = '${CallSid.replace(/'/g, "''")}' ORDER BY createdAt DESC LIMIT 1`,
+      `SELECT * FROM call_logs WHERE contact_id = ${contactId} AND exotel_call_sid = '${CallSid.replace(
+        /'/g,
+        "''",
+      )}' ORDER BY createdAt DESC LIMIT 1`,
     );
-    
-    console.log(`🔍 [Webhook] Searching for call log: contact_id=${contactId}, exotel_call_sid=${CallSid}`);
-    console.log(`🔍 [Webhook] Found ${existingLogs.length} matching call log(s)`);
-    
+
+    console.log(
+      `🔍 [Webhook] Searching for call log: contact_id=${contactId}, exotel_call_sid=${CallSid}`,
+    );
+    console.log(
+      `🔍 [Webhook] Found ${existingLogs.length} matching call log(s)`,
+    );
+
     const existingCallLog = existingLogs.length > 0 ? existingLogs[0] : null;
 
     if (existingCallLog) {
-      console.log(`📝 [Webhook] Found existing call log ${existingCallLog.id} with status="${existingCallLog.status}", duration=${existingCallLog.duration}`);
-      
+      console.log(
+        `📝 [Webhook] Found existing call log ${existingCallLog.id} with status="${existingCallLog.status}", duration=${existingCallLog.duration}`,
+      );
+
       // Update existing call log - use the duration from updateData
-      const finalDuration = updateData.duration !== undefined ? updateData.duration : (existingCallLog.duration || 0);
+      const finalDuration =
+        updateData.duration !== undefined
+          ? updateData.duration
+          : existingCallLog.duration || 0;
       const statusValue = `'${contactStatus.replace(/'/g, "''")}'`;
-      const recordingValue = updateData.recording_url ? `'${updateData.recording_url.replace(/'/g, "''")}'` : 'NULL';
-      
+      const recordingValue = updateData.recording_url
+        ? `'${updateData.recording_url.replace(/'/g, "''")}'`
+        : 'NULL';
+
       // Update ALL call logs with this CallSid (not just one) to ensure consistency
+      // Format datetime for MySQL (YYYY-MM-DD HH:MM:SS)
+      const mysqlDateTime = new Date()
+        .toISOString()
+        .replace('T', ' ')
+        .substring(0, 19);
       const updateQuery = `UPDATE call_logs SET 
           status = ${statusValue}, 
           duration = ${finalDuration}, 
           recording_url = ${recordingValue}, 
-          updatedAt = '${new Date().toISOString()}' 
-        WHERE contact_id = ${contactId} AND exotel_call_sid = '${CallSid.replace(/'/g, "''")}'`;
-      
-      console.log(`🔄 [Webhook] Executing call_logs update for ALL matching entries:`, updateQuery);
-      
+          updatedAt = '${mysqlDateTime}' 
+        WHERE contact_id = ${contactId} AND exotel_call_sid = '${CallSid.replace(
+        /'/g,
+        "''",
+      )}'`;
+
+      console.log(
+        `🔄 [Webhook] Executing call_logs update for ALL matching entries:`,
+        updateQuery,
+      );
+
       const [updateResult] = await sequelize.query(updateQuery);
-      console.log(`📊 [Webhook] Update result - affected rows:`, updateResult.affectedRows || 'unknown');
-      
+      console.log(
+        `📊 [Webhook] Update result - affected rows:`,
+        updateResult.affectedRows || 'unknown',
+      );
+
       // Verify the update was successful by reloading from database
       const [verifyLogs] = await sequelize.query(
-        `SELECT id, status, duration, recording_url, updatedAt FROM call_logs WHERE id = ${existingCallLog.id}`
+        `SELECT id, status, duration, recording_url, updatedAt FROM call_logs WHERE id = ${existingCallLog.id}`,
       );
       if (verifyLogs.length > 0) {
         const verified = verifyLogs[0];
@@ -434,57 +543,81 @@ const handleExotelWebhook = async (req, res) => {
           status: verified.status,
           duration: verified.duration,
           recording_url: verified.recording_url ? 'present' : 'none',
-          updatedAt: verified.updatedAt
+          updatedAt: verified.updatedAt,
         });
-        
+
         // Double-check the status matches what we set
         if (verified.status !== contactStatus) {
-          console.error(`❌ [Webhook] STATUS MISMATCH! Expected "${contactStatus}" but got "${verified.status}"`);
+          console.error(
+            `❌ [Webhook] STATUS MISMATCH! Expected "${contactStatus}" but got "${verified.status}"`,
+          );
         } else {
-          console.log(`✅ [Webhook] Status correctly updated to "${contactStatus}"`);
+          console.log(
+            `✅ [Webhook] Status correctly updated to "${contactStatus}"`,
+          );
         }
       } else {
-        console.error(`❌ [Webhook] Could not verify call log update - call log ${existingCallLog.id} not found after update`);
+        console.error(
+          `❌ [Webhook] Could not verify call log update - call log ${existingCallLog.id} not found after update`,
+        );
       }
     } else {
       // Create new call log entry using raw SQL
-      const finalDuration = updateData.duration !== undefined ? updateData.duration : 0;
-      
+      const finalDuration =
+        updateData.duration !== undefined ? updateData.duration : 0;
+
       // Try to find user_id from any existing call log for this contact/exotel_call_sid
       const [userLogs] = await sequelize.query(
-        `SELECT user_id FROM call_logs WHERE contact_id = ${contact.id} AND exotel_call_sid = '${CallSid}' AND user_id IS NOT NULL ORDER BY createdAt ASC LIMIT 1`
+        `SELECT user_id FROM call_logs WHERE contact_id = ${contact.id} AND exotel_call_sid = '${CallSid}' AND user_id IS NOT NULL ORDER BY createdAt ASC LIMIT 1`,
       );
-      const userId = userLogs.length > 0 && userLogs[0].user_id ? userLogs[0].user_id : 'NULL';
-      
+      const userId =
+        userLogs.length > 0 && userLogs[0].user_id
+          ? userLogs[0].user_id
+          : 'NULL';
+
       const attemptNo =
         contact.attempts +
         (contactStatus !== 'In Progress' && contactStatus !== 'Initiated'
           ? 1
           : 0);
-      
-      const recordingUrlSafe = updateData.recording_url ? updateData.recording_url.replace(/'/g, "''") : null;
-      
+
+      const recordingUrlSafe = updateData.recording_url
+        ? updateData.recording_url.replace(/'/g, "''")
+        : null;
+
+      // Format datetime for MySQL (YYYY-MM-DD HH:MM:SS)
+      const mysqlDateTime = new Date()
+        .toISOString()
+        .replace('T', ' ')
+        .substring(0, 19);
       await sequelize.query(
         `INSERT INTO call_logs (contact_id, exotel_call_sid, attempt_no, status, duration, recording_url, user_id, createdAt, updatedAt) 
          VALUES (${
            contact.id
          }, '${CallSid}', ${attemptNo}, '${contactStatus}', ${finalDuration}, ${
           recordingUrlSafe ? `'${recordingUrlSafe}'` : 'NULL'
-        }, ${userId}, '${new Date().toISOString()}', '${new Date().toISOString()}')`,
+        }, ${userId}, '${mysqlDateTime}', '${mysqlDateTime}')`,
       );
-      
-      console.log(`✅ [Webhook] Created new call log: status=${contactStatus}, duration=${finalDuration} seconds`);
+
+      console.log(
+        `✅ [Webhook] Created new call log: status=${contactStatus}, duration=${finalDuration} seconds`,
+      );
     }
 
     // Reload contact to get latest data
     await contact.reload();
-    
+
     // Get the updated call log
     const [updatedLogs] = await sequelize.query(
-      `SELECT * FROM call_logs WHERE contact_id = ${contact.id} AND exotel_call_sid = '${CallSid.replace(/'/g, "''")}' ORDER BY createdAt DESC LIMIT 1`
+      `SELECT * FROM call_logs WHERE contact_id = ${
+        contact.id
+      } AND exotel_call_sid = '${CallSid.replace(
+        /'/g,
+        "''",
+      )}' ORDER BY createdAt DESC LIMIT 1`,
     );
     const updatedCallLog = updatedLogs.length > 0 ? updatedLogs[0] : null;
-    
+
     res.json({
       success: true,
       message: 'Webhook processed successfully',
@@ -498,12 +631,14 @@ const handleExotelWebhook = async (req, res) => {
         recording_url: contact.recording_url, // Use actual updated recording_url from DB
         attempts: contact.attempts,
       },
-      callLog: updatedCallLog ? {
-        id: updatedCallLog.id,
-        status: updatedCallLog.status,
-        duration: updatedCallLog.duration,
-        recording_url: updatedCallLog.recording_url,
-      } : null,
+      callLog: updatedCallLog
+        ? {
+            id: updatedCallLog.id,
+            status: updatedCallLog.status,
+            duration: updatedCallLog.duration,
+            recording_url: updatedCallLog.recording_url,
+          }
+        : null,
     });
   } catch (error) {
     console.error('❌ Error processing Exotel webhook:', error);

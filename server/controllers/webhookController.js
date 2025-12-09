@@ -60,8 +60,11 @@ const handleExotelWebhook = async (req, res) => {
           );
 
           if (results.length > 0) {
-            // Create a mock contact object from raw data
-            contact = {
+            // Try to get the actual Sequelize model instance
+            contact = await Contact.findByPk(results[0].id);
+            if (!contact) {
+              // Fallback: Create a plain object (will use raw SQL updates)
+              contact = {
               id: results[0].id,
               name: results[0].name,
               phone: results[0].phone,
@@ -71,22 +74,8 @@ const handleExotelWebhook = async (req, res) => {
               duration: results[0].duration,
               recording_url: results[0].recording_url,
               last_attempt: results[0].last_attempt,
-              update: async function (data) {
-                await sequelize.query(
-                  'UPDATE contacts SET status = ?, duration = ?, recording_url = ?, last_attempt = ?, attempts = ? WHERE id = ?',
-                  {
-                    replacements: [
-                      data.status,
-                      data.duration,
-                      data.recording_url,
-                      data.last_attempt,
-                      data.attempts,
-                      this.id,
-                    ],
-                  },
-                );
-              },
             };
+            }
           }
         } catch (sqlError) {
           console.error('SQL query error:', sqlError.message);
@@ -378,7 +367,25 @@ const handleExotelWebhook = async (req, res) => {
       console.log(`✅ [Webhook] Setting duration to 0 for ${contactStatus} call (not completed)`);
     }
 
+    // Update contact table - always use Sequelize for consistency
+    const contactId = contact.id;
+    
+    // Reload contact as Sequelize model if it's a plain object
+    if (typeof contact.update !== 'function') {
+      contact = await Contact.findByPk(contactId);
+      if (!contact) {
+        console.error(`❌ [Webhook] Contact ${contactId} not found in database`);
+        return res.status(404).json({ error: 'Contact not found' });
+      }
+    }
+    
+    // Update contact using Sequelize (handles all fields correctly)
     await contact.update(updateData);
+    console.log(`✅ [Webhook] Updated contact ${contactId}: status=${updateData.status}, duration=${updateData.duration}, recording=${updateData.recording_url ? 'yes' : 'no'}`);
+    
+    // Reload contact to verify the update
+    await contact.reload();
+    console.log(`✅ [Webhook] Verified contact update - status: ${contact.status}, duration: ${contact.duration}, recording_url: ${contact.recording_url ? 'present' : 'none'}`);
 
     // Update contact's exotel_call_sid if not already set
     if (!contact.exotel_call_sid) {
@@ -387,26 +394,36 @@ const handleExotelWebhook = async (req, res) => {
 
     // Find the most recent call log for this contact to update it (using raw SQL)
     const [existingLogs] = await sequelize.query(
-      `SELECT * FROM call_logs WHERE contact_id = ${contact.id} AND exotel_call_sid = '${CallSid}' ORDER BY createdAt DESC LIMIT 1`,
+      `SELECT * FROM call_logs WHERE contact_id = ${contactId} AND exotel_call_sid = '${CallSid.replace(/'/g, "''")}' ORDER BY createdAt DESC LIMIT 1`,
     );
     const existingCallLog = existingLogs.length > 0 ? existingLogs[0] : null;
 
     if (existingCallLog) {
       // Update existing call log - use the duration from updateData
       const finalDuration = updateData.duration !== undefined ? updateData.duration : (existingCallLog.duration || 0);
+      const statusValue = `'${contactStatus.replace(/'/g, "''")}'`;
+      const recordingValue = updateData.recording_url ? `'${updateData.recording_url.replace(/'/g, "''")}'` : 'NULL';
       
-      await sequelize.query(
-        `UPDATE call_logs SET 
-          status = '${contactStatus}', 
+      const updateQuery = `UPDATE call_logs SET 
+          status = ${statusValue}, 
           duration = ${finalDuration}, 
-          recording_url = ${
-            updateData.recording_url ? `'${updateData.recording_url.replace(/'/g, "''")}'` : 'NULL'
-          }, 
+          recording_url = ${recordingValue}, 
           updatedAt = '${new Date().toISOString()}' 
-        WHERE id = ${existingCallLog.id}`,
-      );
+        WHERE id = ${existingCallLog.id}`;
       
-      console.log(`✅ [Webhook] Updated call log ${existingCallLog.id}: status=${contactStatus}, duration=${finalDuration} seconds`);
+      console.log(`🔄 [Webhook] Executing call_logs update:`, updateQuery);
+      
+      await sequelize.query(updateQuery);
+      
+      console.log(`✅ [Webhook] Updated call log ${existingCallLog.id}: status=${contactStatus}, duration=${finalDuration} seconds, recording=${updateData.recording_url ? 'yes' : 'no'}`);
+      
+      // Verify the update was successful
+      const [verifyLogs] = await sequelize.query(
+        `SELECT status, duration, recording_url FROM call_logs WHERE id = ${existingCallLog.id}`
+      );
+      if (verifyLogs.length > 0) {
+        console.log(`✅ [Webhook] Verified call log update:`, verifyLogs[0]);
+      }
     } else {
       // Create new call log entry using raw SQL
       const finalDuration = updateData.duration !== undefined ? updateData.duration : 0;
@@ -437,6 +454,15 @@ const handleExotelWebhook = async (req, res) => {
       console.log(`✅ [Webhook] Created new call log: status=${contactStatus}, duration=${finalDuration} seconds`);
     }
 
+    // Reload contact to get latest data
+    await contact.reload();
+    
+    // Get the updated call log
+    const [updatedLogs] = await sequelize.query(
+      `SELECT * FROM call_logs WHERE contact_id = ${contact.id} AND exotel_call_sid = '${CallSid.replace(/'/g, "''")}' ORDER BY createdAt DESC LIMIT 1`
+    );
+    const updatedCallLog = updatedLogs.length > 0 ? updatedLogs[0] : null;
+    
     res.json({
       success: true,
       message: 'Webhook processed successfully',
@@ -445,15 +471,17 @@ const handleExotelWebhook = async (req, res) => {
         id: contact.id,
         name: contact.name,
         phone: contact.phone,
-        status: contactStatus,
-        duration: updateData.duration || 0,
-        recording_url: updateData.recording_url,
-        attempts:
-          contact.attempts +
-          (contactStatus !== 'In Progress' && contactStatus !== 'Initiated'
-            ? 1
-            : 0),
+        status: contact.status, // Use actual updated status from DB
+        duration: contact.duration || 0, // Use actual updated duration from DB
+        recording_url: contact.recording_url, // Use actual updated recording_url from DB
+        attempts: contact.attempts,
       },
+      callLog: updatedCallLog ? {
+        id: updatedCallLog.id,
+        status: updatedCallLog.status,
+        duration: updatedCallLog.duration,
+        recording_url: updatedCallLog.recording_url,
+      } : null,
     });
   } catch (error) {
     console.error('❌ Error processing Exotel webhook:', error);

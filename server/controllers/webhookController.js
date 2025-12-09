@@ -392,37 +392,59 @@ const handleExotelWebhook = async (req, res) => {
       await contact.update({ exotel_call_sid: CallSid });
     }
 
-    // Find the most recent call log for this contact to update it (using raw SQL)
+    // Find the most recent call log for this contact and CallSid to update it
+    // IMPORTANT: Use exotel_call_sid to find the exact call log entry
     const [existingLogs] = await sequelize.query(
       `SELECT * FROM call_logs WHERE contact_id = ${contactId} AND exotel_call_sid = '${CallSid.replace(/'/g, "''")}' ORDER BY createdAt DESC LIMIT 1`,
     );
+    
+    console.log(`🔍 [Webhook] Searching for call log: contact_id=${contactId}, exotel_call_sid=${CallSid}`);
+    console.log(`🔍 [Webhook] Found ${existingLogs.length} matching call log(s)`);
+    
     const existingCallLog = existingLogs.length > 0 ? existingLogs[0] : null;
 
     if (existingCallLog) {
+      console.log(`📝 [Webhook] Found existing call log ${existingCallLog.id} with status="${existingCallLog.status}", duration=${existingCallLog.duration}`);
+      
       // Update existing call log - use the duration from updateData
       const finalDuration = updateData.duration !== undefined ? updateData.duration : (existingCallLog.duration || 0);
       const statusValue = `'${contactStatus.replace(/'/g, "''")}'`;
       const recordingValue = updateData.recording_url ? `'${updateData.recording_url.replace(/'/g, "''")}'` : 'NULL';
       
+      // Update ALL call logs with this CallSid (not just one) to ensure consistency
       const updateQuery = `UPDATE call_logs SET 
           status = ${statusValue}, 
           duration = ${finalDuration}, 
           recording_url = ${recordingValue}, 
           updatedAt = '${new Date().toISOString()}' 
-        WHERE id = ${existingCallLog.id}`;
+        WHERE contact_id = ${contactId} AND exotel_call_sid = '${CallSid.replace(/'/g, "''")}'`;
       
-      console.log(`🔄 [Webhook] Executing call_logs update:`, updateQuery);
+      console.log(`🔄 [Webhook] Executing call_logs update for ALL matching entries:`, updateQuery);
       
-      await sequelize.query(updateQuery);
+      const [updateResult] = await sequelize.query(updateQuery);
+      console.log(`📊 [Webhook] Update result - affected rows:`, updateResult.affectedRows || 'unknown');
       
-      console.log(`✅ [Webhook] Updated call log ${existingCallLog.id}: status=${contactStatus}, duration=${finalDuration} seconds, recording=${updateData.recording_url ? 'yes' : 'no'}`);
-      
-      // Verify the update was successful
+      // Verify the update was successful by reloading from database
       const [verifyLogs] = await sequelize.query(
-        `SELECT status, duration, recording_url FROM call_logs WHERE id = ${existingCallLog.id}`
+        `SELECT id, status, duration, recording_url, updatedAt FROM call_logs WHERE id = ${existingCallLog.id}`
       );
       if (verifyLogs.length > 0) {
-        console.log(`✅ [Webhook] Verified call log update:`, verifyLogs[0]);
+        const verified = verifyLogs[0];
+        console.log(`✅ [Webhook] Verified call log ${verified.id} update:`, {
+          status: verified.status,
+          duration: verified.duration,
+          recording_url: verified.recording_url ? 'present' : 'none',
+          updatedAt: verified.updatedAt
+        });
+        
+        // Double-check the status matches what we set
+        if (verified.status !== contactStatus) {
+          console.error(`❌ [Webhook] STATUS MISMATCH! Expected "${contactStatus}" but got "${verified.status}"`);
+        } else {
+          console.log(`✅ [Webhook] Status correctly updated to "${contactStatus}"`);
+        }
+      } else {
+        console.error(`❌ [Webhook] Could not verify call log update - call log ${existingCallLog.id} not found after update`);
       }
     } else {
       // Create new call log entry using raw SQL

@@ -692,16 +692,6 @@ const CallTable = () => {
         return;
       }
 
-      // Show toast immediately when call button is clicked
-      toast.info(`📞 Initiating call to ${contactName}...`, {
-        position: "top-right",
-        autoClose: 2000,
-        hideProgressBar: false,
-        closeOnClick: true,
-        pauseOnHover: true,
-        draggable: true,
-      });
-
       console.log('Opening call modal for contact:', contact);
 
       safeSetCallModal({
@@ -830,16 +820,6 @@ const CallTable = () => {
       // Add contact to calling set and show immediate feedback
       setCallingContacts((prev) => new Set(prev).add(contactId));
 
-      // Show toast immediately when call is initiated
-      toast.info(`📞 Calling ${contactName}...`, {
-        position: "top-right",
-        autoClose: 3000,
-        hideProgressBar: false,
-        closeOnClick: true,
-        pauseOnHover: true,
-        draggable: true,
-      });
-
       const response = await fetch(`/api/contacts/${contactId}/call`, {
         method: 'POST',
         headers: {
@@ -870,8 +850,9 @@ const CallTable = () => {
           callStatus: 'In Progress',
         }));
 
+        // Show single success toast message
         toast.success(
-          `✅ Call initiated for ${contactName}! Please wait for the call to connect.`,
+          `📞 Call initiated for ${contactName}! Please wait for the call to connect.`,
           {
             position: "top-right",
             autoClose: 5000,

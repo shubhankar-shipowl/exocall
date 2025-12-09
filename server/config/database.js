@@ -57,15 +57,6 @@ const getSequelizeInstance = () => {
     }
   );
 
-  // Track connection lifecycle
-  sequelizeInstance.connectionManager.on('connect', (connection) => {
-    console.log('🔌 Database connection opened');
-  });
-
-  sequelizeInstance.connectionManager.on('disconnect', (connection) => {
-    console.log('🔌 Database connection closed');
-  });
-
   return sequelizeInstance;
 };
 

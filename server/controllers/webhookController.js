@@ -1,6 +1,10 @@
 const Contact = require('../models/Contact');
 const CallLog = require('../models/CallLog');
 const { sequelize } = require('../config/database');
+const {
+  fetchDurationFromExotel,
+  retryFetchDuration,
+} = require('../services/durationSyncService');
 
 // Handle Exotel webhook for call status updates
 const handleExotelWebhook = async (req, res) => {
@@ -411,10 +415,12 @@ const handleExotelWebhook = async (req, res) => {
                   `⚠️ [Webhook] Exotel API returned 0, using webhook duration: ${fallbackDuration} seconds`,
                 );
               } else {
-                updateData.duration = 0;
+                // Don't set duration to 0 - leave it NULL so scheduled task can retry
+                // Duration will be fetched by retry mechanism or scheduled sync
                 console.warn(
-                  `⚠️ [Webhook] Exotel API returned duration as 0 and no webhook duration, setting to 0`,
+                  `⚠️ [Webhook] Exotel API returned duration as 0 and no webhook duration. Will retry fetching duration asynchronously.`,
                 );
+                // Don't set updateData.duration - leave it undefined so it won't overwrite existing value
               }
             }
           } else {
@@ -429,7 +435,10 @@ const handleExotelWebhook = async (req, res) => {
                 `⚠️ [Webhook] Using webhook duration as fallback: ${fallbackDuration} seconds`,
               );
             } else {
-              updateData.duration = 0;
+              // Don't set duration to 0 - leave it NULL so scheduled task can retry
+              console.warn(
+                `⚠️ [Webhook] Unexpected API response format and no webhook duration. Will retry fetching duration asynchronously.`,
+              );
             }
           }
         } else {
@@ -443,7 +452,10 @@ const handleExotelWebhook = async (req, res) => {
               `⚠️ [Webhook] Using webhook duration as fallback: ${fallbackDuration} seconds`,
             );
           } else {
-            updateData.duration = 0;
+            // Don't set duration to 0 - leave it NULL so scheduled task can retry
+            console.warn(
+              `⚠️ [Webhook] Missing Exotel credentials and no webhook duration. Will retry fetching duration asynchronously.`,
+            );
           }
         }
       } catch (fetchError) {
@@ -465,11 +477,11 @@ const handleExotelWebhook = async (req, res) => {
             `⚠️ [Webhook] API fetch failed, using webhook duration: ${fallbackDuration} seconds`,
           );
         } else {
-          // Last resort: set to 0
-          updateData.duration = 0;
+          // Don't set duration to 0 - schedule retry to fetch from API later
           console.warn(
-            `⚠️ [Webhook] API fetch failed and no webhook duration, setting to 0`,
+            `⚠️ [Webhook] API fetch failed and no webhook duration. Will retry fetching duration asynchronously.`,
           );
+          // Duration will be fetched by retry mechanism or scheduled sync
         }
       }
     } else {
@@ -543,10 +555,11 @@ const handleExotelWebhook = async (req, res) => {
       );
 
       // Update existing call log - use the duration from updateData
+      // If duration is missing for completed calls, keep existing value (don't overwrite with 0)
       const finalDuration =
         updateData.duration !== undefined
           ? updateData.duration
-          : existingCallLog.duration || 0;
+          : existingCallLog.duration || null;
       const statusValue = `'${contactStatus.replace(/'/g, "''")}'`;
       const recordingValue = updateData.recording_url
         ? `'${updateData.recording_url.replace(/'/g, "''")}'`
@@ -558,15 +571,30 @@ const handleExotelWebhook = async (req, res) => {
         .toISOString()
         .replace('T', ' ')
         .substring(0, 19);
-      const updateQuery = `UPDATE call_logs SET 
+      
+      // Build update query - only update duration if we have a valid value
+      let updateQuery;
+      if (finalDuration !== null && finalDuration !== undefined) {
+        updateQuery = `UPDATE call_logs SET 
           status = ${statusValue}, 
           duration = ${finalDuration}, 
           recording_url = ${recordingValue}, 
           updatedAt = '${mysqlDateTime}' 
         WHERE contact_id = ${contactId} AND exotel_call_sid = '${CallSid.replace(
-        /'/g,
-        "''",
-      )}'`;
+          /'/g,
+          "''",
+        )}'`;
+      } else {
+        // Don't update duration if it's null/undefined - keep existing value
+        updateQuery = `UPDATE call_logs SET 
+          status = ${statusValue}, 
+          recording_url = ${recordingValue}, 
+          updatedAt = '${mysqlDateTime}' 
+        WHERE contact_id = ${contactId} AND exotel_call_sid = '${CallSid.replace(
+          /'/g,
+          "''",
+        )}'`;
+      }
 
       console.log(
         `🔄 [Webhook] Executing call_logs update for ALL matching entries:`,
@@ -602,15 +630,45 @@ const handleExotelWebhook = async (req, res) => {
             `✅ [Webhook] Status correctly updated to "${contactStatus}"`,
           );
         }
-      } else {
-        console.error(
-          `❌ [Webhook] Could not verify call log update - call log ${existingCallLog.id} not found after update`,
-        );
-      }
+        } else {
+          console.error(
+            `❌ [Webhook] Could not verify call log update - call log ${existingCallLog.id} not found after update`,
+          );
+        }
+
+        // If this is a completed call and duration is still missing, schedule retry
+        if (
+          isCompleted &&
+          (!updateData.duration ||
+            updateData.duration === 0 ||
+            updateData.duration === null ||
+            updateData.duration === undefined)
+        ) {
+          console.log(
+            `🔄 [Webhook] Completed call with missing duration. Scheduling retry for CallSid: ${CallSid}`,
+          );
+          // Schedule async retry (don't await - let it run in background)
+          retryFetchDuration(
+            CallSid,
+            contactId,
+            existingCallLog.id,
+            existingCallLog.user_id || null,
+            30000, // 30 seconds delay
+            3, // Max 3 retries
+          ).catch((retryError) => {
+            console.error(
+              `❌ [Webhook] Retry failed for CallSid ${CallSid}:`,
+              retryError.message,
+            );
+          });
+        }
     } else {
       // Create new call log entry using raw SQL
+      // For completed calls, don't set duration to 0 if it's missing - leave it NULL
       const finalDuration =
-        updateData.duration !== undefined ? updateData.duration : 0;
+        updateData.duration !== undefined && updateData.duration !== null
+          ? updateData.duration
+          : null;
 
       // Try to find user_id from any existing call log for this contact/exotel_call_sid
       const [userLogs] = await sequelize.query(
@@ -636,14 +694,57 @@ const handleExotelWebhook = async (req, res) => {
         .toISOString()
         .replace('T', ' ')
         .substring(0, 19);
+      
+      const durationValue =
+        finalDuration !== null && finalDuration !== undefined
+          ? finalDuration
+          : 'NULL';
+
       await sequelize.query(
         `INSERT INTO call_logs (contact_id, exotel_call_sid, attempt_no, status, duration, recording_url, user_id, createdAt, updatedAt) 
          VALUES (${
            contact.id
-         }, '${CallSid}', ${attemptNo}, '${contactStatus}', ${finalDuration}, ${
+         }, '${CallSid}', ${attemptNo}, '${contactStatus}', ${durationValue}, ${
           recordingUrlSafe ? `'${recordingUrlSafe}'` : 'NULL'
         }, ${userId}, '${mysqlDateTime}', '${mysqlDateTime}')`,
       );
+
+      // If this is a completed call and duration is missing, schedule retry
+      if (
+        isCompleted &&
+        (!updateData.duration ||
+          updateData.duration === 0 ||
+          updateData.duration === null ||
+          updateData.duration === undefined)
+      ) {
+        console.log(
+          `🔄 [Webhook] Completed call with missing duration. Scheduling retry for CallSid: ${CallSid}`,
+        );
+        // Get the newly created call log ID
+        const [newLogs] = await sequelize.query(
+          `SELECT id FROM call_logs WHERE contact_id = ${contact.id} AND exotel_call_sid = '${CallSid.replace(
+            /'/g,
+            "''",
+          )}' ORDER BY createdAt DESC LIMIT 1`,
+        );
+        if (newLogs.length > 0) {
+          const newCallLogId = newLogs[0].id;
+          // Schedule async retry (don't await - let it run in background)
+          retryFetchDuration(
+            CallSid,
+            contact.id,
+            newCallLogId,
+            userId !== 'NULL' ? userId : null,
+            30000, // 30 seconds delay
+            3, // Max 3 retries
+          ).catch((retryError) => {
+            console.error(
+              `❌ [Webhook] Retry failed for CallSid ${CallSid}:`,
+              retryError.message,
+            );
+          });
+        }
+      }
 
       console.log(
         `✅ [Webhook] Created new call log: status=${contactStatus}, duration=${finalDuration} seconds`,

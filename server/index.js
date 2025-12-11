@@ -274,9 +274,34 @@ const startServer = async () => {
       console.log(`📊 Dashboard available at http://localhost:${PORT}`);
     });
 
+    // Start scheduled task to sync missing durations for completed calls
+    // This runs every 5 minutes to backfill any missing durations
+    const { syncMissingDurations } = require('./services/durationSyncService');
+    
+    // Run immediately on startup (after 30 seconds to let server stabilize)
+    setTimeout(async () => {
+      console.log('🔄 [DurationSync] Running initial sync for missing durations...');
+      await syncMissingDurations();
+    }, 30000);
+
+    // Then run every 5 minutes
+    const durationSyncInterval = setInterval(async () => {
+      console.log('🔄 [DurationSync] Running periodic sync for missing durations...');
+      await syncMissingDurations();
+    }, 5 * 60 * 1000); // 5 minutes
+
+    // Store interval reference for cleanup
+    app.locals.durationSyncInterval = durationSyncInterval;
+
     // Graceful shutdown handlers
     const gracefulShutdown = async (signal) => {
       console.log(`\n${signal} received. Starting graceful shutdown...`);
+      
+      // Stop the duration sync interval
+      if (app.locals.durationSyncInterval) {
+        clearInterval(app.locals.durationSyncInterval);
+        console.log('✅ Duration sync interval stopped');
+      }
       
       // Stop accepting new requests
       server.close(async () => {

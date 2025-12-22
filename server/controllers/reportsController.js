@@ -67,12 +67,20 @@ const getCallStatistics = async (req, res) => {
     }
 
     // Build include clause for store filtering
+    // Use case-insensitive store comparison to match export function behavior
     const includeClause = store && store !== 'all' ? [
       {
         model: Contact,
         as: 'contact',
         attributes: [],
-        where: { store: store },
+        where: {
+          [Op.and]: [
+            sequelize.where(
+              sequelize.fn('LOWER', sequelize.fn('TRIM', sequelize.col('store'))),
+              store.toLowerCase().trim()
+            )
+          ]
+        },
         required: true,
       },
     ] : [];
@@ -109,18 +117,69 @@ const getCallStatistics = async (req, res) => {
       totalCalls > 0 ? (completedCalls / totalCalls) * 100 : 0;
 
     // Get average duration
-    const avgDurationResult = await CallLog.findOne({
-      attributes: [
-        [sequelize.fn('AVG', sequelize.col('CallLog.duration')), 'avgDuration'],
-      ],
-      where: {
-        ...whereClause,
-        duration: { [Op.ne]: null },
-      },
-      include: includeClause,
-    });
-
-    const avgDuration = avgDurationResult?.dataValues?.avgDuration || 0;
+    // Use raw query to avoid MySQL only_full_group_by error (Sequelize adds id column automatically)
+    let avgDuration = 0;
+    try {
+      // Build the WHERE clause manually for the raw query
+      const whereConditions = [];
+      const replacements = [];
+      
+      // Add date range conditions
+      if (whereClause.createdAt) {
+        if (whereClause.createdAt[Op.between]) {
+          whereConditions.push('`CallLog`.`createdAt` BETWEEN ? AND ?');
+          replacements.push(whereClause.createdAt[Op.between][0]);
+          replacements.push(whereClause.createdAt[Op.between][1]);
+        } else if (whereClause.createdAt[Op.gte]) {
+          whereConditions.push('`CallLog`.`createdAt` >= ?');
+          replacements.push(whereClause.createdAt[Op.gte]);
+        } else if (whereClause.createdAt[Op.lte]) {
+          whereConditions.push('`CallLog`.`createdAt` <= ?');
+          replacements.push(whereClause.createdAt[Op.lte]);
+        }
+      }
+      
+      // Add status condition
+      if (whereClause.status) {
+        whereConditions.push('`CallLog`.`status` = ?');
+        replacements.push(whereClause.status);
+      }
+      
+      // Add user_id condition
+      if (whereClause.user_id) {
+        whereConditions.push('`CallLog`.`user_id` = ?');
+        replacements.push(whereClause.user_id);
+      }
+      
+      // Add duration not null condition
+      whereConditions.push('`CallLog`.`duration` IS NOT NULL');
+      
+      // Build the JOIN clause for store filter
+      let joinClause = '';
+      if (store && store !== 'all') {
+        joinClause = `INNER JOIN \`contacts\` AS \`contact\` ON \`CallLog\`.\`contact_id\` = \`contact\`.\`id\` AND (LOWER(TRIM(\`contact\`.\`store\`)) = ?)`;
+        replacements.unshift(store.toLowerCase().trim()); // Add store at the beginning
+      }
+      
+      const whereClauseSQL = whereConditions.length > 0 ? `WHERE ${whereConditions.join(' AND ')}` : '';
+      
+      const query = `
+        SELECT AVG(\`CallLog\`.\`duration\`) AS \`avgDuration\`
+        FROM \`call_logs\` AS \`CallLog\`
+        ${joinClause}
+        ${whereClauseSQL}
+      `;
+      
+      const [results] = await sequelize.query(query, {
+        replacements,
+        type: sequelize.QueryTypes.SELECT,
+      });
+      
+      avgDuration = results?.avgDuration || 0;
+    } catch (error) {
+      console.error('Error calculating average duration:', error);
+      avgDuration = 0;
+    }
 
     // Get calls by day (for charts)
     const callsByDay = await CallLog.findAll({
@@ -479,12 +538,15 @@ const exportCallsToExcel = async (req, res) => {
       });
 
       // Filter call logs by store if store filter is provided, and get only latest per contact
+      // Use case-insensitive comparison to match export function behavior
       const seenContactIds = new Set();
       for (const log of allCallLogs) {
         if (!log.contact_id) continue;
         
         if (store && store !== 'all') {
-          if (!log.contact || log.contact.store !== store) {
+          const logStore = log.contact?.store?.toLowerCase().trim() || '';
+          const filterStore = store.toLowerCase().trim();
+          if (!log.contact || logStore !== filterStore) {
             continue;
           }
         }
@@ -540,9 +602,8 @@ const exportCallsToExcel = async (req, res) => {
         }
       }
       
-      // IMPORTANT: Include ALL contacts created on the selected date
-      // When status is "all", include all contacts regardless of their call log status
-      // When status is specific, only include contacts with matching status call logs OR contacts without call logs
+      // IMPORTANT: When both store and date filters are provided, export ONLY call logs (actual call data)
+      // Do not include contacts without call logs - only export actual call data for that store and date range
       for (const contact of allContactsForStoreAndDate) {
         const callLog = callLogsMap.get(contact.id);
         
@@ -550,49 +611,37 @@ const exportCallsToExcel = async (req, res) => {
           // Contact has a call log on the selected date
           // Apply status filter only if status is not "all"
           if (status && status !== 'all' && callLog.status !== status) {
-            // If status filter doesn't match, skip this contact (don't include as "Not Called")
-            // because it has a call log, just not matching the status filter
+            // If status filter doesn't match, skip this call log
             continue;
           } else {
-            // Include this contact with its call log data
+            // Include this call log data
             // This includes ALL statuses when status is "all" (including "Not Connect")
             callLog.contact = contact;
             callLogs.push(callLog);
           }
-        } else {
-          // No call log in date range - only include if contact was created on the selected date
-          // This ensures we don't include contacts from past dates
-          let contactCreatedOnDate = false;
-          if (dateStartUTC && dateEndUTC) {
-            const contactCreatedAt = new Date(contact.createdAt);
-            contactCreatedOnDate = contactCreatedAt >= dateStartUTC && contactCreatedAt <= dateEndUTC;
-          } else {
-            // If no date filter, include all contacts without call logs
-            contactCreatedOnDate = true;
-          }
-          
-          if (contactCreatedOnDate) {
-            // Only include if status filter allows "Not Called" or is "all"
-            if (!status || status === 'all' || status === 'Not Called') {
-              notCalledContacts.push(contact);
-            }
-          }
         }
+        // Skip contacts without call logs when both store and date filters are provided
+        // Only export actual call data, not contacts without calls
       }
       
       console.log(`Export Summary: Store="${store}", Date="${startDate} to ${endDate}", Status="${status || 'all'}"`);
-      console.log(`  - ${callLogs.length} contacts with call logs (matching status filter)`);
-      console.log(`  - ${notCalledContacts.length} contacts without call logs (created on selected date)`);
-      console.log(`  - Total: ${callLogs.length + notCalledContacts.length} contacts (only from selected date)`);
+      console.log(`  - ${callLogs.length} call logs exported (matching store, date range, and status filter)`);
+      console.log(`  - Only call data is exported (contacts without call logs are excluded when both store and date filters are provided)`);
     } else {
       // Convert map to array
       callLogs.push(...Array.from(callLogsMap.values()));
       
       // Get "Not Called" contacts if store filter is provided
+      // Use case-insensitive comparison to match export function behavior
       if (store && store !== 'all') {
         const contactWhereClause = {
-          store: store,
-          status: 'Not Called',
+          [Op.and]: [
+            sequelize.where(
+              sequelize.fn('LOWER', sequelize.fn('TRIM', sequelize.col('store'))),
+              store.toLowerCase().trim()
+            ),
+            { status: 'Not Called' }
+          ],
         };
 
         if (startDate && endDate) {
@@ -736,6 +785,7 @@ const exportCallsToExcel = async (req, res) => {
         Value: messageData.Value || 'N/A',
         Address: messageData.Address || 'N/A',
         Pincode: messageData.Pincode || 'N/A',
+        Store: log.contact?.store || 'N/A',
         'Attempt No': log.attempt_no,
         Status: normalizeStatus(log.status),
         'Duration (formatted)': durationFormatted,
@@ -768,6 +818,7 @@ const exportCallsToExcel = async (req, res) => {
         Value: messageData.Value || 'N/A',
         Address: messageData.Address || 'N/A',
         Pincode: messageData.Pincode || 'N/A',
+        Store: contact.store || 'N/A',
         'Attempt No': 0,
         Status: 'Not Called',
         'Duration (formatted)': '0:00',
@@ -807,6 +858,7 @@ const exportCallsToExcel = async (req, res) => {
       { wch: 15 }, // Value
       { wch: 40 }, // Address
       { wch: 12 }, // Pincode
+      { wch: 20 }, // Store
       { wch: 12 }, // Attempt No
       { wch: 15 }, // Status
       { wch: 18 }, // Duration (formatted)
@@ -938,6 +990,7 @@ const getCallLogs = async (req, res) => {
     const whereClause = whereConditions.length > 0 ? { [Op.and]: whereConditions } : {};
 
     // Build include clause with store filter if provided
+    // Use case-insensitive store comparison to match export function behavior
     const includeClause = [
       {
         model: Contact,
@@ -953,7 +1006,17 @@ const getCallLogs = async (req, res) => {
           'remark',
           'store',
         ],
-        ...(store && store !== 'all' ? { where: { store: store }, required: true } : {}),
+        ...(store && store !== 'all' ? {
+          where: {
+            [Op.and]: [
+              sequelize.where(
+                sequelize.fn('LOWER', sequelize.fn('TRIM', sequelize.col('store'))),
+                store.toLowerCase().trim()
+              )
+            ]
+          },
+          required: true
+        } : {}),
       },
       {
         model: User,

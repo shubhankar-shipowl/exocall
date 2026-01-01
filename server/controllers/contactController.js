@@ -1,21 +1,65 @@
 const Contact = require('../models/Contact');
 const CallLog = require('../models/CallLog');
+const { Op } = require('sequelize');
+const { sequelize } = require('../config/database');
 const axios = require('axios');
 const xml2js = require('xml2js');
 
 const getContacts = async (req, res) => {
   try {
+    const user = req.user;
+    
+    // Check if assigned_to column exists
+    let hasAssignedToColumn = false;
+    try {
+      const [columns] = await sequelize.query("SHOW COLUMNS FROM contacts LIKE 'assigned_to'");
+      hasAssignedToColumn = columns.length > 0;
+    } catch (err) {
+      // If check fails, assume column doesn't exist
+      hasAssignedToColumn = false;
+    }
+
+    const whereClause = {};
+
+    // If user is an agent, only show contacts assigned to them
+    // If column doesn't exist yet, agents see no contacts (empty list)
+    // If user is admin, show all contacts
+    if (user.role === 'agent') {
+      if (hasAssignedToColumn) {
+        whereClause.assigned_to = user.id;
+      } else {
+        // If column doesn't exist, return empty array for agents
+        // This ensures agents don't see all contacts before assignment feature is set up
+        return res.json([]);
+      }
+    }
+
+    // Build attributes list, excluding assigned_to if column doesn't exist
+    const attributes = [
+      'id', 'name', 'phone', 'message', 'schedule_time', 'status', 
+      'status_override', 'attempts', 'exotel_call_sid', 'recording_url', 
+      'duration', 'agent_notes', 'product_name', 'price', 'address', 
+      'state', 'store', 'last_attempt', 'remark', 
+      'createdAt', 'updatedAt'
+    ];
+    
+    if (hasAssignedToColumn) {
+      attributes.push('assigned_to');
+    }
+
     const contacts = await Contact.findAll({
+      where: whereClause,
+      attributes,
       order: [['createdAt', 'DESC']],
     });
 
     res.json(contacts);
   } catch (error) {
     console.error('❌ [API /api/contacts] - Error fetching contacts:', error);
+    
     res.status(500).json({
       error: 'Failed to fetch contacts',
       details: error.message,
-      stack: error.stack,
     });
   }
 };
@@ -579,6 +623,270 @@ const setRemark = async (req, res) => {
   }
 };
 
+// Assign contacts to agents (admin only)
+const assignContacts = async (req, res) => {
+  try {
+    const { contactIds, agentId } = req.body;
+
+    if (!contactIds || !Array.isArray(contactIds) || contactIds.length === 0) {
+      return res.status(400).json({
+        error: 'contactIds must be a non-empty array',
+      });
+    }
+
+    if (!agentId) {
+      return res.status(400).json({
+        error: 'agentId is required',
+      });
+    }
+
+    // Verify agent exists and is an agent
+    const User = require('../models/User');
+    const agent = await User.findByPk(agentId);
+    if (!agent) {
+      return res.status(404).json({ error: 'Agent not found' });
+    }
+    if (agent.role !== 'agent') {
+      return res.status(400).json({ error: 'User is not an agent' });
+    }
+
+    // Update contacts using raw SQL (try directly, catch column errors)
+    const placeholders = contactIds.map(() => '?').join(',');
+    try {
+      const [result] = await sequelize.query(
+        `UPDATE contacts SET assigned_to = ?, updatedAt = NOW() WHERE id IN (${placeholders})`,
+        {
+          replacements: [agentId, ...contactIds],
+        }
+      );
+
+      // For MySQL UPDATE, result is a ResultSetHeader with affectedRows property
+      const assignedCount = result?.affectedRows || contactIds.length;
+
+      res.json({
+        success: true,
+        message: `Assigned ${assignedCount} contact(s) to agent`,
+        assignedCount: assignedCount,
+      });
+    } catch (updateError) {
+      // Check if error is about missing column
+      const errorMessage = updateError.message || updateError.parent?.message || '';
+      if (errorMessage.includes('assigned_to') && errorMessage.includes('Unknown column')) {
+        // Try to add the column if it doesn't exist
+        try {
+          await sequelize.query(
+            'ALTER TABLE contacts ADD COLUMN assigned_to INT NULL'
+          );
+          await sequelize.query(
+            'ALTER TABLE contacts ADD CONSTRAINT fk_contacts_assigned_to FOREIGN KEY (assigned_to) REFERENCES users(id) ON DELETE SET NULL'
+          );
+          // Retry the update
+          const [result] = await sequelize.query(
+            `UPDATE contacts SET assigned_to = ?, updatedAt = NOW() WHERE id IN (${placeholders})`,
+            {
+              replacements: [agentId, ...contactIds],
+            }
+          );
+          const assignedCount = result?.affectedRows || contactIds.length;
+          return res.json({
+            success: true,
+            message: `Assigned ${assignedCount} contact(s) to agent`,
+            assignedCount: assignedCount,
+          });
+        } catch (alterError) {
+          // If column already exists, just retry the update
+          if (alterError.message && alterError.message.includes('Duplicate column name')) {
+            const [result] = await sequelize.query(
+              `UPDATE contacts SET assigned_to = ?, updatedAt = NOW() WHERE id IN (${placeholders})`,
+              {
+                replacements: [agentId, ...contactIds],
+              }
+            );
+            const assignedCount = result?.affectedRows || contactIds.length;
+            return res.json({
+              success: true,
+              message: `Assigned ${assignedCount} contact(s) to agent`,
+              assignedCount: assignedCount,
+            });
+          }
+          throw alterError;
+        }
+      }
+      throw updateError; // Re-throw if it's a different error
+    }
+
+  } catch (error) {
+    console.error('Error assigning contacts:', error);
+    // If we get here, it means the update failed for a reason other than missing column
+    // (which is already handled above)
+    res.status(500).json({ error: 'Failed to assign contacts' });
+  }
+};
+
+// Unassign contacts (admin only)
+const unassignContacts = async (req, res) => {
+  try {
+    const { contactIds } = req.body;
+
+    if (!contactIds || !Array.isArray(contactIds) || contactIds.length === 0) {
+      return res.status(400).json({
+        error: 'contactIds must be a non-empty array',
+      });
+    }
+
+    // Update contacts using raw SQL to remove assignment (column check via try-catch)
+    const placeholders = contactIds.map(() => '?').join(',');
+    try {
+      const [result] = await sequelize.query(
+        `UPDATE contacts SET assigned_to = NULL, updatedAt = NOW() WHERE id IN (${placeholders})`,
+        {
+          replacements: contactIds,
+        }
+      );
+
+      // For MySQL UPDATE, result is an array: [ResultSetHeader, undefined]
+      // ResultSetHeader has affectedRows property
+      const unassignedCount = result?.affectedRows || contactIds.length;
+
+      res.json({
+        success: true,
+        message: `Unassigned ${unassignedCount} contact(s)`,
+        unassignedCount: unassignedCount,
+      });
+    } catch (updateError) {
+      // Check if error is about missing column
+      if (updateError.message && updateError.message.includes('assigned_to')) {
+        return res.status(500).json({ 
+          error: 'Assignment feature is not available. Please run the migration to add the assigned_to column.' 
+        });
+      }
+      throw updateError; // Re-throw if it's a different error
+    }
+  } catch (error) {
+    console.error('Error unassigning contacts:', error);
+    res.status(500).json({ error: 'Failed to unassign contacts' });
+  }
+};
+
+// Get contacts by store and product for assignment (admin only)
+const getContactsForAssignment = async (req, res) => {
+  try {
+    const { store, product_name, date } = req.query;
+
+    // Use raw query to avoid Sequelize schema cache issues
+    let query = 'SELECT id, name, phone, store, product_name, status, createdAt';
+    // Check if assigned_to column exists and include it
+    try {
+      const [columns] = await sequelize.query("SHOW COLUMNS FROM contacts LIKE 'assigned_to'");
+      if (columns.length > 0) {
+        query += ', assigned_to';
+      }
+    } catch (err) {
+      // If check fails, continue without assigned_to
+    }
+    
+    query += ' FROM contacts WHERE 1=1';
+    const replacements = {};
+    
+    if (store) {
+      query += ' AND store = :store';
+      replacements.store = store;
+    }
+    
+    if (product_name) {
+      query += ' AND product_name = :product_name';
+      replacements.product_name = product_name;
+    }
+    
+    if (date) {
+      const startDate = new Date(date);
+      startDate.setHours(0, 0, 0, 0);
+      const endDate = new Date(date);
+      endDate.setHours(23, 59, 59, 999);
+      query += ' AND createdAt BETWEEN :startDate AND :endDate';
+      replacements.startDate = startDate;
+      replacements.endDate = endDate;
+    }
+    
+    query += ' ORDER BY createdAt DESC';
+    
+    const [contacts] = await sequelize.query(query, {
+      replacements,
+      type: sequelize.QueryTypes.SELECT,
+    });
+
+    res.json(contacts);
+  } catch (error) {
+    console.error('Error fetching contacts for assignment:', error);
+    res.status(500).json({ error: 'Failed to fetch contacts' });
+  }
+};
+
+// Get assigned contacts grouped by agent (admin only)
+const getAssignedContactsByAgent = async (req, res) => {
+  try {
+    // Check if assigned_to column exists
+    let hasAssignedToColumn = false;
+    try {
+      const [columns] = await sequelize.query("SHOW COLUMNS FROM contacts LIKE 'assigned_to'");
+      hasAssignedToColumn = columns.length > 0;
+    } catch (err) {
+      hasAssignedToColumn = false;
+    }
+
+    if (!hasAssignedToColumn) {
+      return res.json({
+        success: true,
+        assignments: [],
+        unassignedCount: 0,
+      });
+    }
+
+    // Get all contacts with assigned_to
+    const contacts = await Contact.findAll({
+      attributes: ['id', 'name', 'phone', 'store', 'product_name', 'status', 'assigned_to', 'createdAt'],
+      order: [['createdAt', 'DESC']],
+    });
+
+    // Get all agents
+    const User = require('../models/User');
+    const agents = await User.findAll({
+      where: { role: 'agent' },
+      attributes: ['id', 'username', 'email'],
+    });
+
+    // Group contacts by agent
+    const assignments = agents.map(agent => {
+      const assignedContacts = contacts.filter(c => c.assigned_to === agent.id);
+      return {
+        agent: {
+          id: agent.id,
+          username: agent.username,
+          email: agent.email,
+        },
+        contacts: assignedContacts,
+        count: assignedContacts.length,
+      };
+    });
+
+    // Get unassigned contacts
+    const unassignedContacts = contacts.filter(c => !c.assigned_to || c.assigned_to === null);
+
+    res.json({
+      success: true,
+      assignments,
+      unassignedCount: unassignedContacts.length,
+      unassignedContacts: unassignedContacts.slice(0, 100), // Limit to first 100 for performance
+    });
+  } catch (error) {
+    console.error('Error getting assigned contacts by agent:', error);
+    res.status(500).json({
+      error: 'Failed to get assigned contacts',
+      details: error.message,
+    });
+  }
+};
+
 module.exports = {
   getContacts,
   getContactById,
@@ -589,4 +897,8 @@ module.exports = {
   addNote,
   setStatusOverride,
   setRemark,
+  assignContacts,
+  unassignContacts,
+  getContactsForAssignment,
+  getAssignedContactsByAgent,
 };

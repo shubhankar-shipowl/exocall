@@ -29,6 +29,7 @@ import ConfirmationModal from '../components/ConfirmationModal';
 import { EmptyStates } from '../components/EmptyState';
 import { TableSkeleton } from '../components/LoadingSkeleton';
 import { useAuth } from '../contexts/AuthContext';
+import { maskPhone } from '../utils/mask';
 
 const CallLogs = () => {
   const { isAdmin } = useAuth();
@@ -1362,7 +1363,7 @@ const CallLogs = () => {
                     {/* Phone */}
                     <td className="px-4 py-4">
                       <div className="text-sm text-gray-900 font-mono">
-                        {call.phone}
+                        {maskPhone(call.phone)}
                       </div>
                     </td>
 

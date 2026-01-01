@@ -50,7 +50,7 @@ const Sidebar = () => {
             margin: 0,
           }}
         >
-          ExoCall
+          Shipowl Connect
         </h1>
         <p
           style={{

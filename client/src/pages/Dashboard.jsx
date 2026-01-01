@@ -15,6 +15,7 @@ import {
 import { useState, useEffect } from "react";
 import { toast } from "react-toastify";
 import { useAuth } from "../contexts/AuthContext";
+import { maskPhone } from "../utils/mask";
 import {
   BarChart,
   Bar,
@@ -679,10 +680,7 @@ const Dashboard = () => {
                       fill: "#111827",
                     }}
                   >
-                    {callStats.notCalled +
-                      callStats.inProgress +
-                      callStats.completed +
-                      callStats.failed}
+                    {dashboardSummary.contacts.total}
                   </text>
                   <text
                     x="50%"
@@ -748,11 +746,7 @@ const Dashboard = () => {
                     labelLine={false}
                     label={({ name, payload }) => {
                       const originalValue = payload?.originalValue || 0;
-                      const total =
-                        callStats.notCalled +
-                        callStats.inProgress +
-                        callStats.completed +
-                        callStats.failed;
+                      const total = dashboardSummary.contacts.total;
 
                       if (originalValue === 0) return "";
 
@@ -1835,7 +1829,7 @@ const Dashboard = () => {
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm text-gray-900">{contact.phone}</div>
+                    <div className="text-sm text-gray-900">{maskPhone(contact.phone)}</div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-center">
                     <span

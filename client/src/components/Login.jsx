@@ -126,7 +126,7 @@ const Login = ({ onSwitchToRegister }) => {
             Welcome Back
           </h1>
           <p style={{ color: "#6b7280", margin: 0 }}>
-            Sign in to your ExoCall account
+            Sign in to your Shipowl Connect account
           </p>
         </div>
 

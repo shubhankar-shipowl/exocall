@@ -1,6 +1,6 @@
 #!/bin/bash
 
-echo "🚀 ExoCall Dashboard - Production Setup & Start"
+echo "🚀 Shipowl Connect - Production Setup & Start"
 echo "=============================================="
 
 # Colors for output
@@ -62,7 +62,7 @@ wait_for_service() {
 }
 
 # Start of the script
-print_step "Starting ExoCall Dashboard Setup..."
+print_step "Starting Shipowl Connect Setup..."
 
 # Check if we're in the right directory
 if [ ! -f "ecosystem.config.js" ]; then
@@ -151,7 +151,7 @@ pm2 delete ecosystem.config.js 2>/dev/null || true
 print_success "PM2 processes cleaned"
 
 # Start the application with PM2
-print_step "Starting ExoCall Dashboard with PM2..."
+print_step "Starting Shipowl Connect with PM2..."
 pm2 start ecosystem.config.js
 
 if [ $? -ne 0 ]; then
@@ -185,7 +185,7 @@ print_success "PM2 configuration saved!"
 
 # Display final status
 echo ""
-echo "🎉 ExoCall Dashboard Setup Complete!"
+echo "🎉 Shipowl Connect Setup Complete!"
 echo "========================================"
 echo ""
 
@@ -248,7 +248,7 @@ echo "  Combined logs: pm2 logs exocall"
 echo "  All logs: pm2 logs"
 echo ""
 
-print_success "🎯 Your ExoCall Dashboard is now running in development mode!"
+print_success "🎯 Your Shipowl Connect is now running in development mode!"
 print_status "Access the application via:"
 echo -e "  ${BLUE}• Frontend (direct):${NC} http://localhost:3000"
 echo -e "  ${BLUE}• HTTPS (via nginx):${NC} https://localhost:8456"

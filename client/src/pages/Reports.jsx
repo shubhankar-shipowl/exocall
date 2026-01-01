@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "../contexts/AuthContext";
 import {
   Download,
@@ -14,6 +14,7 @@ import {
   X,
   RefreshCw,
 } from "lucide-react";
+import { maskPhone } from "../utils/mask";
 import {
   BarChart,
   Bar,
@@ -47,6 +48,38 @@ const Reports = () => {
   const [showFilters, setShowFilters] = useState(false);
   const [chartType, setChartType] = useState("bar"); // bar, pie, line
   const [availableStores, setAvailableStores] = useState([]);
+
+  // Fetch all available stores from contacts (not filtered)
+  const fetchAllStores = useCallback(async () => {
+    try {
+      const response = await fetch(`/api/contacts`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (response.ok) {
+        const contacts = await response.json();
+        // Extract unique stores from all contacts
+        const stores = [
+          ...new Set(
+            contacts
+              .map((contact) => contact.store)
+              .filter((store) => store && store.trim() !== "")
+          ),
+        ].sort();
+        setAvailableStores(stores);
+      } else {
+        console.error(
+          "Failed to fetch stores:",
+          response.status,
+          response.statusText
+        );
+      }
+    } catch (error) {
+      console.error("Error fetching stores:", error);
+    }
+  }, [token]);
 
   // Fetch statistics
   const fetchStatistics = async () => {
@@ -116,16 +149,6 @@ const Reports = () => {
         const data = await response.json();
         setCallLogs(data.data.callLogs);
         setPagination(data.data.pagination);
-        
-        // Extract unique stores from call logs
-        const stores = [
-          ...new Set(
-            data.data.callLogs
-              .map((log) => log.contact?.store)
-              .filter((store) => store && store.trim() !== "")
-          ),
-        ].sort();
-        setAvailableStores(stores);
       } else {
         console.error(
           "Failed to fetch call logs:",
@@ -193,6 +216,11 @@ const Reports = () => {
     };
     loadData();
   }, [filters]);
+
+  // Fetch all stores once on component mount
+  useEffect(() => {
+    fetchAllStores();
+  }, [fetchAllStores]);
 
   const handleFilterChange = (key, value) => {
     setFilters((prev) => ({
@@ -1035,7 +1063,7 @@ const Reports = () => {
                             margin: 0,
                           }}
                         >
-                          {log.contact?.phone || "N/A"}
+                          {maskPhone(log.contact?.phone || "N/A")}
                         </p>
                       </div>
                     </td>

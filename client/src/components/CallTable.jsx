@@ -25,6 +25,7 @@ import CallModal from './CallModal';
 import { EmptyStates } from './EmptyState';
 import { TableSkeleton } from './LoadingSkeleton';
 import { useAuth } from '../contexts/AuthContext';
+import { maskPhone } from '../utils/mask';
 
 const CallTable = () => {
   const { isAdmin } = useAuth();
@@ -2061,7 +2062,7 @@ const CallTable = () => {
                   {/* Phone */}
                   <td className="px-2 sm:px-4 py-3 sm:py-4">
                     <div className="text-xs sm:text-sm text-gray-900 font-mono break-all">
-                      {contact.phone || 'N/A'}
+                      {maskPhone(contact.phone || 'N/A')}
                     </div>
                   </td>
 

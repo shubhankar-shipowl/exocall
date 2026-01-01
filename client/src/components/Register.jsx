@@ -160,7 +160,7 @@ const Register = ({ onSwitchToLogin }) => {
             Create Account
           </h1>
           <p style={{ color: "#6b7280", margin: 0, fontSize: "14px" }}>
-            Join ExoCall Support Dashboard
+            Join Shipowl Connect
           </p>
         </div>
 

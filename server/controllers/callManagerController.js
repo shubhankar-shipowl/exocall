@@ -181,7 +181,28 @@ const startCalls = async (req, res) => {
 // Get call statistics
 const getCallStats = async (req, res) => {
   try {
+    // Build contact where clause for agents (filter by assigned_to)
+    let contactWhereClause = {};
+    if (req.user && req.user.role === 'agent') {
+      // Check if assigned_to column exists
+      try {
+        const { sequelize } = require('../config/database');
+        const [columns] = await sequelize.query("SHOW COLUMNS FROM contacts LIKE 'assigned_to'");
+        if (columns.length > 0) {
+          contactWhereClause.assigned_to = req.user.id;
+          console.log(`🔒 [CallStats] Filtering contacts for agent ${req.user.id} by assigned_to`);
+        } else {
+          // If column doesn't exist, agents see no contacts
+          contactWhereClause.id = { [Sequelize.Op.eq]: null }; // This will return 0 results
+        }
+      } catch (err) {
+        // If check fails, agents see no contacts
+        contactWhereClause.id = { [Sequelize.Op.eq]: null }; // This will return 0 results
+      }
+    }
+
     const stats = await Contact.findAll({
+      where: contactWhereClause,
       attributes: [
         'status',
         [sequelize.fn('COUNT', sequelize.col('id')), 'count'],
@@ -190,13 +211,33 @@ const getCallStats = async (req, res) => {
       raw: true,
     });
 
-    const totalCalls = await CallLog.count();
+    // Build call log where clause for agents
+    let callLogWhereClause = {};
+    if (req.user && req.user.role === 'agent') {
+      callLogWhereClause.user_id = req.user.id;
+    }
+
+    const totalCalls = await CallLog.count({ where: callLogWhereClause });
     const todayCalls = await CallLog.count({
       where: {
+        ...callLogWhereClause,
         createdAt: {
           [Sequelize.Op.gte]: new Date(new Date().setHours(0, 0, 0, 0)),
         },
       },
+    });
+
+    const totalContacts = stats.reduce(
+      (sum, item) => sum + parseInt(item.count || 0),
+      0
+    );
+
+    console.log(`📊 [CallStats] Response for ${req.user?.role || 'unknown'} user ${req.user?.id || 'N/A'}:`, {
+      totalContacts,
+      statusBreakdown: stats,
+      totalCalls,
+      todayCalls,
+      filterApplied: req.user?.role === 'agent' ? `assigned_to = ${req.user.id}` : 'none (admin)',
     });
 
     res.json({

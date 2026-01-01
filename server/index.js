@@ -63,7 +63,7 @@ app.use((req, res, next) => {
 
 // Basic route
 app.get('/', (req, res) => {
-  res.json({ message: 'ExoCall Support Dashboard API' });
+  res.json({ message: 'Shipowl Connect API' });
 });
 
 // Health check endpoint

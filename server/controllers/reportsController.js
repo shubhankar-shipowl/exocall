@@ -1120,16 +1120,7 @@ const getDashboardSummary = async (req, res) => {
       console.log(`👑 [DashboardSummary] Admin user - showing all summary`);
     }
 
-    // Get contact statistics
-    const contactStats = await Contact.findAll({
-      attributes: [
-        'status',
-        [sequelize.fn('COUNT', sequelize.col('id')), 'count'],
-      ],
-      group: ['status'],
-    });
-
-    // Get call statistics
+    // Get call statistics first (needed for response)
     const totalCalls = await CallLog.count({ where: whereClause });
     const completedCalls = await CallLog.count({
       where: {
@@ -1146,6 +1137,7 @@ const getDashboardSummary = async (req, res) => {
 
     const todayCalls = await CallLog.count({
       where: {
+        ...whereClause,
         createdAt: {
           [Op.between]: [todayStart, todayEnd],
         },
@@ -1166,18 +1158,86 @@ const getDashboardSummary = async (req, res) => {
 
     const avgDuration = avgDurationResult?.dataValues?.avgDuration || 0;
 
+    // Build contact where clause for agents (filter by assigned_to)
+    let contactWhereClause = {};
+    if (req.user && req.user.role === 'agent') {
+      // Check if assigned_to column exists
+      try {
+        const [columns] = await sequelize.query("SHOW COLUMNS FROM contacts LIKE 'assigned_to'");
+        if (columns.length > 0) {
+          contactWhereClause.assigned_to = req.user.id;
+          console.log(`🔒 [DashboardSummary] Filtering contacts for agent ${req.user.id} by assigned_to`);
+        } else {
+          // If column doesn't exist, return empty stats for agents
+          return res.json({
+            success: true,
+            summary: {
+              contacts: {
+                total: 0,
+                byStatus: [],
+              },
+              calls: {
+                total: totalCalls,
+                completed: completedCalls,
+                today: todayCalls,
+                successRate: totalCalls > 0 ? Math.round((completedCalls / totalCalls) * 100 * 100) / 100 : 0,
+                avgDuration: Math.round(avgDuration),
+              },
+            },
+          });
+        }
+      } catch (err) {
+        // If check fails, return empty stats for agents
+        return res.json({
+          success: true,
+          summary: {
+            contacts: {
+              total: 0,
+              byStatus: [],
+            },
+            calls: {
+              total: totalCalls,
+              completed: completedCalls,
+              today: todayCalls,
+              successRate: totalCalls > 0 ? Math.round((completedCalls / totalCalls) * 100 * 100) / 100 : 0,
+              avgDuration: Math.round(avgDuration),
+            },
+          },
+        });
+      }
+    }
+
+    // Get contact statistics (filtered by assigned_to for agents)
+    const contactStats = await Contact.findAll({
+      where: contactWhereClause,
+      attributes: [
+        'status',
+        [sequelize.fn('COUNT', sequelize.col('id')), 'count'],
+      ],
+      group: ['status'],
+    });
+
+    const totalContacts = contactStats.reduce(
+      (sum, item) => sum + parseInt(item.dataValues.count),
+      0,
+    );
+    const byStatus = contactStats.map((item) => ({
+      status: item.status,
+      count: parseInt(item.dataValues.count),
+    }));
+
+    console.log(`📊 [DashboardSummary] Contact stats for ${req.user?.role || 'unknown'}:`, {
+      total: totalContacts,
+      byStatus: byStatus,
+      filterApplied: req.user?.role === 'agent' ? `assigned_to = ${req.user.id}` : 'none (admin)',
+    });
+
     res.json({
       success: true,
       summary: {
         contacts: {
-          total: contactStats.reduce(
-            (sum, item) => sum + parseInt(item.dataValues.count),
-            0,
-          ),
-          byStatus: contactStats.map((item) => ({
-            status: item.status,
-            count: parseInt(item.dataValues.count),
-          })),
+          total: totalContacts,
+          byStatus: byStatus,
         },
         calls: {
           total: totalCalls,

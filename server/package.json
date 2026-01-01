@@ -1,7 +1,7 @@
 {
   "name": "exocall-server",
   "version": "1.0.0",
-  "description": "ExoCall Support Dashboard Backend",
+  "description": "Shipowl Connect Backend",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",

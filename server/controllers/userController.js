@@ -138,10 +138,137 @@ const getUserStats = async (req, res) => {
   }
 };
 
+// Update user password (admin only)
+const updateUserPassword = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { password } = req.body;
+
+    // Validate password
+    if (!password) {
+      return res.status(400).json({
+        error: "Password is required",
+      });
+    }
+
+    // Validate password strength
+    if (password.length < 6) {
+      return res.status(400).json({
+        error: "Password must be at least 6 characters long",
+      });
+    }
+
+    const user = await User.findByPk(id);
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    // Update password (the model hook will hash it automatically)
+    await user.update({ password });
+
+    res.json({
+      success: true,
+      message: "User password updated successfully",
+    });
+  } catch (error) {
+    console.error("Error updating user password:", error);
+    res.status(500).json({ error: "Failed to update user password" });
+  }
+};
+
+// Create new user (admin only)
+const createUser = async (req, res) => {
+  try {
+    const { username, email, password, role = "agent" } = req.body;
+
+    // Validate required fields
+    if (!username || !email || !password) {
+      return res.status(400).json({
+        error: "Missing required fields",
+        required: ["username", "email", "password"],
+      });
+    }
+
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({
+        error: "Invalid email format",
+      });
+    }
+
+    // Validate username format (alphanumeric and underscores only)
+    const usernameRegex = /^[a-zA-Z0-9_]{3,30}$/;
+    if (!usernameRegex.test(username)) {
+      return res.status(400).json({
+        error:
+          "Username must be 3-30 characters long and contain only letters, numbers, and underscores",
+      });
+    }
+
+    // Validate password strength
+    if (password.length < 6) {
+      return res.status(400).json({
+        error: "Password must be at least 6 characters long",
+      });
+    }
+
+    // Validate role
+    if (role && !["admin", "agent"].includes(role)) {
+      return res.status(400).json({
+        error: "Invalid role. Must be 'admin' or 'agent'",
+      });
+    }
+
+    // Check if user already exists
+    const existingUser = await User.findOne({
+      where: {
+        [Op.or]: [{ email }, { username }],
+      },
+    });
+
+    if (existingUser) {
+      return res.status(400).json({
+        error: "User already exists",
+        field: existingUser.email === email ? "email" : "username",
+      });
+    }
+
+    // Create new user
+    const user = await User.create({
+      username,
+      email,
+      password,
+      role,
+    });
+
+    res.status(201).json({
+      success: true,
+      message: "User created successfully",
+      user: {
+        id: user.id,
+        username: user.username,
+        email: user.email,
+        role: user.role,
+        createdAt: user.createdAt,
+        updatedAt: user.updatedAt,
+      },
+    });
+  } catch (error) {
+    console.error("Error creating user:", error);
+    res.status(500).json({
+      error: "Failed to create user",
+      details: error.message,
+    });
+  }
+};
+
 module.exports = {
   getUsers,
   getUserById,
   updateUserRole,
+  updateUserPassword,
   deleteUser,
   getUserStats,
+  createUser,
 };

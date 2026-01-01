@@ -97,6 +97,11 @@ const Contact = sequelize.define(
       allowNull: true,
       comment: 'Remark: accept or reject',
     },
+    assigned_to: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      comment: 'User ID of the agent assigned to this contact',
+    },
   },
   {
     tableName: 'contacts',

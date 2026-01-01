@@ -9,6 +9,7 @@ import {
   Loader,
   MapPin,
 } from "lucide-react";
+import { maskPhone } from "../utils/mask";
 
 const CallModal = ({ isOpen, onClose, contact, callStatus, callDuration }) => {
   const [countdown, setCountdown] = useState(0);
@@ -215,7 +216,7 @@ const CallModal = ({ isOpen, onClose, contact, callStatus, callDuration }) => {
               </div>
               <div>
                 <h3 className="font-medium text-gray-900 font-mono">
-                  {contact.phone}
+                  {maskPhone(contact.phone)}
                 </h3>
                 <p className="text-sm text-gray-500">Phone Number</p>
               </div>

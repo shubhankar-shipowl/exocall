@@ -1,7 +1,7 @@
 {
   "name": "exocall-dashboard",
   "version": "1.0.0",
-  "description": "ExoCall Support Dashboard - Full Stack Application",
+  "description": "Shipowl Connect - Full Stack Application",
   "scripts": {
     "dev": "concurrently \"npm run server\" \"npm run client\"",
     "dev:pm2": "pm2 start ecosystem.config.js",
@@ -34,6 +34,6 @@
     "mysql",
     "exotel"
   ],
-  "author": "ExoCall Team",
+  "author": "Shipowl Connect Team",
   "license": "MIT"
 }

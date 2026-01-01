@@ -10,6 +10,10 @@ const {
   addNote,
   setStatusOverride,
   setRemark,
+  assignContacts,
+  unassignContacts,
+  getContactsForAssignment,
+  getAssignedContactsByAgent,
 } = require('../controllers/contactController');
 const { authenticate, authorize } = require('../middleware/auth');
 
@@ -28,5 +32,9 @@ router.put('/:id/remark', setRemark);
 router.post('/', authorize(['admin']), createContact);
 router.put('/:id', authorize(['admin']), updateContact);
 router.delete('/:id', authorize(['admin']), deleteContact);
+router.get('/assignment/list', authorize(['admin']), getContactsForAssignment);
+router.get('/assignment/view', authorize(['admin']), getAssignedContactsByAgent);
+router.post('/assignment/assign', authorize(['admin']), assignContacts);
+router.post('/assignment/unassign', authorize(['admin']), unassignContacts);
 
 module.exports = router;

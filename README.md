@@ -1,4 +1,4 @@
-# ExoCall Support Dashboard
+# Shipowl Connect
 
 A modern full-stack web application for managing call campaigns and contacts using Exotel API.
 

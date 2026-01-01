@@ -15,6 +15,7 @@ import {
 import { toast } from "react-toastify";
 import ConfirmationModal from "./ConfirmationModal";
 import { ModalSkeleton } from "./LoadingSkeleton";
+import { maskPhone } from "../utils/mask";
 
 const CallDetailModal = ({ isOpen, onClose, contactId }) => {
   const [contact, setContact] = useState(null);
@@ -406,7 +407,7 @@ const CallDetailModal = ({ isOpen, onClose, contactId }) => {
                         margin: "4px 0 0 0",
                       }}
                     >
-                      {contact.phone}
+                      {maskPhone(contact.phone)}
                     </p>
                   </div>
                   <div style={{ marginLeft: "auto" }}>

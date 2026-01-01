@@ -97,7 +97,7 @@ const Settings = () => {
       "Notification" in window &&
       Notification.permission === "granted"
     ) {
-      new Notification("ExoCall Dashboard", {
+      new Notification("Shipowl Connect", {
         body: message,
         icon: "/favicon.ico",
         tag: "settings-notification",
@@ -251,9 +251,9 @@ const Settings = () => {
 
     // Update page title based on language
     const titles = {
-      en: "ExoCall Dashboard - Settings",
-      es: "ExoCall Dashboard - Configuración",
-      fr: "ExoCall Dashboard - Paramètres",
+      en: "Shipowl Connect - Settings",
+      es: "Shipowl Connect - Configuración",
+      fr: "Shipowl Connect - Paramètres",
     };
     document.title = titles[settings.language] || titles.en;
 

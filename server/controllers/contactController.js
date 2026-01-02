@@ -650,18 +650,51 @@ const assignContacts = async (req, res) => {
       return res.status(400).json({ error: 'User is not an agent' });
     }
 
+    // Check if assigned_to column exists before checking for already assigned contacts
+    let hasAssignedToColumn = false;
+    try {
+      const [columns] = await sequelize.query("SHOW COLUMNS FROM contacts LIKE 'assigned_to'");
+      hasAssignedToColumn = columns.length > 0;
+    } catch (err) {
+      hasAssignedToColumn = false;
+    }
+
+    // Check if any contacts are already assigned to a different agent (only if column exists)
+    if (hasAssignedToColumn) {
+      const [existingAssignments] = await sequelize.query(
+        `SELECT id, assigned_to FROM contacts WHERE id IN (${contactIds.map(() => '?').join(',')}) AND assigned_to IS NOT NULL AND assigned_to != ?`,
+        {
+          replacements: [...contactIds, agentId],
+        }
+      );
+
+      if (existingAssignments && existingAssignments.length > 0) {
+        return res.status(400).json({
+          error: `Cannot assign: ${existingAssignments.length} contact(s) are already assigned to another agent. Please unassign them first.`,
+          alreadyAssignedCount: existingAssignments.length,
+          alreadyAssignedIds: existingAssignments.map(a => a.id),
+        });
+      }
+    }
+
     // Update contacts using raw SQL (try directly, catch column errors)
     const placeholders = contactIds.map(() => '?').join(',');
     try {
       const [result] = await sequelize.query(
-        `UPDATE contacts SET assigned_to = ?, updatedAt = NOW() WHERE id IN (${placeholders})`,
+        `UPDATE contacts SET assigned_to = ?, updatedAt = NOW() WHERE id IN (${placeholders}) AND (assigned_to IS NULL OR assigned_to = ?)`,
         {
-          replacements: [agentId, ...contactIds],
+          replacements: [agentId, ...contactIds, agentId],
         }
       );
 
       // For MySQL UPDATE, result is a ResultSetHeader with affectedRows property
-      const assignedCount = result?.affectedRows || contactIds.length;
+      const assignedCount = result?.affectedRows || 0;
+
+      if (assignedCount === 0) {
+        return res.status(400).json({
+          error: 'No contacts were assigned. All selected contacts may already be assigned.',
+        });
+      }
 
       res.json({
         success: true,
@@ -680,14 +713,36 @@ const assignContacts = async (req, res) => {
           await sequelize.query(
             'ALTER TABLE contacts ADD CONSTRAINT fk_contacts_assigned_to FOREIGN KEY (assigned_to) REFERENCES users(id) ON DELETE SET NULL'
           );
-          // Retry the update
-          const [result] = await sequelize.query(
-            `UPDATE contacts SET assigned_to = ?, updatedAt = NOW() WHERE id IN (${placeholders})`,
+          // Check for already assigned contacts before retry
+          const [existingAssignmentsRetry] = await sequelize.query(
+            `SELECT id, assigned_to FROM contacts WHERE id IN (${placeholders}) AND assigned_to IS NOT NULL AND assigned_to != ?`,
             {
-              replacements: [agentId, ...contactIds],
+              replacements: [...contactIds, agentId],
             }
           );
-          const assignedCount = result?.affectedRows || contactIds.length;
+
+          if (existingAssignmentsRetry && existingAssignmentsRetry.length > 0) {
+            return res.status(400).json({
+              error: `Cannot assign: ${existingAssignmentsRetry.length} contact(s) are already assigned to another agent. Please unassign them first.`,
+              alreadyAssignedCount: existingAssignmentsRetry.length,
+            });
+          }
+
+          // Retry the update
+          const [result] = await sequelize.query(
+            `UPDATE contacts SET assigned_to = ?, updatedAt = NOW() WHERE id IN (${placeholders}) AND (assigned_to IS NULL OR assigned_to = ?)`,
+            {
+              replacements: [agentId, ...contactIds, agentId],
+            }
+          );
+          const assignedCount = result?.affectedRows || 0;
+          
+          if (assignedCount === 0) {
+            return res.status(400).json({
+              error: 'No contacts were assigned. All selected contacts may already be assigned.',
+            });
+          }
+
           return res.json({
             success: true,
             message: `Assigned ${assignedCount} contact(s) to agent`,
@@ -696,13 +751,35 @@ const assignContacts = async (req, res) => {
         } catch (alterError) {
           // If column already exists, just retry the update
           if (alterError.message && alterError.message.includes('Duplicate column name')) {
-            const [result] = await sequelize.query(
-              `UPDATE contacts SET assigned_to = ?, updatedAt = NOW() WHERE id IN (${placeholders})`,
+            // Check for already assigned contacts before retry
+            const [existingAssignmentsRetry2] = await sequelize.query(
+              `SELECT id, assigned_to FROM contacts WHERE id IN (${placeholders}) AND assigned_to IS NOT NULL AND assigned_to != ?`,
               {
-                replacements: [agentId, ...contactIds],
+                replacements: [...contactIds, agentId],
               }
             );
-            const assignedCount = result?.affectedRows || contactIds.length;
+
+            if (existingAssignmentsRetry2 && existingAssignmentsRetry2.length > 0) {
+              return res.status(400).json({
+                error: `Cannot assign: ${existingAssignmentsRetry2.length} contact(s) are already assigned to another agent. Please unassign them first.`,
+                alreadyAssignedCount: existingAssignmentsRetry2.length,
+              });
+            }
+
+            const [result] = await sequelize.query(
+              `UPDATE contacts SET assigned_to = ?, updatedAt = NOW() WHERE id IN (${placeholders}) AND (assigned_to IS NULL OR assigned_to = ?)`,
+              {
+                replacements: [agentId, ...contactIds, agentId],
+              }
+            );
+            const assignedCount = result?.affectedRows || 0;
+            
+            if (assignedCount === 0) {
+              return res.status(400).json({
+                error: 'No contacts were assigned. All selected contacts may already be assigned.',
+              });
+            }
+
             return res.json({
               success: true,
               message: `Assigned ${assignedCount} contact(s) to agent`,

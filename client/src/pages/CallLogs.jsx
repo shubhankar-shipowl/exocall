@@ -36,10 +36,12 @@ const CallLogs = () => {
   const [filter, setFilter] = useState('all');
   const [remarkFilter, setRemarkFilter] = useState('all');
   const [storeFilter, setStoreFilter] = useState('all');
+  const [agentFilter, setAgentFilter] = useState('all');
   const [selectedDate, setSelectedDate] = useState('');
   const [dateRange, setDateRange] = useState('all');
   const [calls, setCalls] = useState([]);
   const [availableStores, setAvailableStores] = useState([]);
+  const [availableAgents, setAvailableAgents] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [playingRecording, setPlayingRecording] = useState(null);
   const [showCalendar, setShowCalendar] = useState(false);
@@ -183,6 +185,27 @@ const CallLogs = () => {
           ),
         ].sort();
         setAvailableStores(stores);
+
+        // Extract unique agents from call logs
+        const agents = [];
+        const agentMap = new Map();
+        callLogs.forEach((call) => {
+          if (call.user && call.user.id) {
+            const agentId = call.user.id;
+            if (!agentMap.has(agentId)) {
+              agentMap.set(agentId, {
+                id: agentId,
+                username: call.user.username || '',
+                email: call.user.email || '',
+                displayName: call.user.username || call.user.email || 'Unknown',
+              });
+            }
+          }
+        });
+        const uniqueAgents = Array.from(agentMap.values()).sort((a, b) => 
+          a.displayName.localeCompare(b.displayName)
+        );
+        setAvailableAgents(uniqueAgents);
       } else {
         toast.error('Failed to fetch call logs');
       }
@@ -233,9 +256,22 @@ const CallLogs = () => {
       storeFilter === 'all' || 
       (call.store && call.store === storeFilter);
 
+    const agentMatch =
+      agentFilter === 'all' ||
+      (call.user && call.user.id && (() => {
+        // Convert both to numbers for reliable comparison
+        const callAgentId = typeof call.user.id === 'string' 
+          ? parseInt(call.user.id, 10) 
+          : Number(call.user.id);
+        const filterAgentId = typeof agentFilter === 'string'
+          ? parseInt(agentFilter, 10)
+          : Number(agentFilter);
+        return callAgentId === filterAgentId;
+      })());
+
     const dateMatch = !selectedDate || call.date === selectedDate;
 
-    return statusMatch && remarkMatch && storeMatch && dateMatch;
+    return statusMatch && remarkMatch && storeMatch && agentMatch && dateMatch;
   });
 
   // Pagination logic
@@ -247,12 +283,13 @@ const CallLogs = () => {
   // Reset to first page when filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [filter, remarkFilter, storeFilter, selectedDate, dateRange]);
+  }, [filter, remarkFilter, storeFilter, agentFilter, selectedDate, dateRange]);
 
   // Clear date filter
   const clearDateFilter = () => {
     setSelectedDate('');
     setDateRange('all');
+    setAgentFilter('all');
   };
 
   // Date range helper functions
@@ -773,6 +810,42 @@ const CallLogs = () => {
             </div>
           )}
 
+          {/* Agent Filter */}
+          {availableAgents.length > 0 && (
+            <div>
+              <label
+                style={{
+                  display: 'block',
+                  fontSize: '14px',
+                  fontWeight: '500',
+                  color: '#374151',
+                  marginBottom: '6px',
+                }}
+              >
+                Agent
+              </label>
+              <select
+                value={agentFilter}
+                onChange={(e) => setAgentFilter(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '8px 12px',
+                  border: '1px solid #d1d5db',
+                  borderRadius: '6px',
+                  fontSize: '14px',
+                  backgroundColor: 'white',
+                }}
+              >
+                <option value="all">All Agents</option>
+                {availableAgents.map((agent) => (
+                  <option key={agent.id} value={agent.id.toString()}>
+                    {agent.displayName}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
           {/* Date Range Filter */}
           <div>
             <label
@@ -915,7 +988,9 @@ const CallLogs = () => {
                     position: 'absolute',
                     top: '100%',
                     left: 0,
-                    right: 0,
+                    width: '320px',
+                    minWidth: '320px',
+                    maxWidth: '320px',
                     zIndex: 50,
                     backgroundColor: 'white',
                     border: '1px solid #d1d5db',
@@ -1157,13 +1232,14 @@ const CallLogs = () => {
           </div>
 
           {/* Clear Filters */}
-          {(selectedDate || filter !== 'all' || remarkFilter !== 'all' || storeFilter !== 'all') && (
+          {(selectedDate || filter !== 'all' || remarkFilter !== 'all' || storeFilter !== 'all' || agentFilter !== 'all') && (
             <div style={{ display: 'flex', alignItems: 'end' }}>
               <button
                 onClick={() => {
                   setFilter('all');
                   setRemarkFilter('all');
                   setStoreFilter('all');
+                  setAgentFilter('all');
                   clearDateFilter();
                 }}
                 style={{
@@ -1188,7 +1264,7 @@ const CallLogs = () => {
         </div>
 
         {/* Active Filters Display */}
-        {(selectedDate || filter !== 'all' || remarkFilter !== 'all' || storeFilter !== 'all') && (
+        {(selectedDate || filter !== 'all' || remarkFilter !== 'all' || storeFilter !== 'all' || agentFilter !== 'all') && (
           <div
             style={{
               marginTop: '16px',
@@ -1246,6 +1322,20 @@ const CallLogs = () => {
                 }}
               >
                 Store: {storeFilter}
+              </span>
+            )}
+            {agentFilter !== 'all' && (
+              <span
+                style={{
+                  backgroundColor: '#ec4899',
+                  color: 'white',
+                  padding: '4px 8px',
+                  borderRadius: '4px',
+                  fontSize: '12px',
+                  fontWeight: '500',
+                }}
+              >
+                Agent: {availableAgents.find(a => a.id.toString() === agentFilter.toString())?.displayName || 'Unknown'}
               </span>
             )}
             {selectedDate && (

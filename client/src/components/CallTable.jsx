@@ -69,6 +69,8 @@ const CallTable = () => {
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [storeFilter, setStoreFilter] = useState('all');
   const [productFilter, setProductFilter] = useState('all');
+  const [agentFilter, setAgentFilter] = useState('all');
+  const [availableAgents, setAvailableAgents] = useState([]);
 
   // Safe modal state setter
   const safeSetCallModal = (newState) => {
@@ -186,6 +188,50 @@ const CallTable = () => {
     }
   };
 
+  // Fetch agents for filter dropdown - only show agents who have assigned contacts
+  const fetchAgents = useCallback(async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch('/api/users', {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (response.ok) {
+        const users = await response.json();
+        // Filter only agents
+        const allAgents = users
+          .filter((user) => user.role === 'agent')
+          .map((user) => ({
+            id: user.id,
+            username: user.username || '',
+            email: user.email || '',
+            displayName: user.username || user.email || 'Unknown',
+          }));
+
+        // Extract unique agent IDs from contacts that have assigned_to
+        const assignedAgentIds = new Set();
+        contacts.forEach((contact) => {
+          if (contact.assigned_to) {
+            assignedAgentIds.add(contact.assigned_to);
+          }
+        });
+
+        // Only show agents who have assigned contacts
+        const agentsWithAssignments = allAgents.filter((agent) =>
+          assignedAgentIds.has(agent.id)
+        );
+
+        // Sort alphabetically
+        agentsWithAssignments.sort((a, b) => a.displayName.localeCompare(b.displayName));
+        setAvailableAgents(agentsWithAssignments);
+      }
+    } catch (error) {
+      console.error('Error fetching agents:', error);
+    }
+  }, [contacts]);
+
   // Fetch contacts from API
   const fetchContacts = useCallback(async () => {
     try {
@@ -218,10 +264,20 @@ const CallTable = () => {
           }
         });
         setStatusOverrideById(overrideMap);
+        // Count contacts with assignments
+        const contactsWithAssignments = data.filter(c => c.assigned_to);
+        const assignmentCounts = {};
+        contactsWithAssignments.forEach(c => {
+          const agentId = c.assigned_to;
+          assignmentCounts[agentId] = (assignmentCounts[agentId] || 0) + 1;
+        });
+        
         console.log(
           '✅ [Frontend CallTable] - Successfully received contacts:',
           {
             count: data.length,
+            contactsWithAssignments: contactsWithAssignments.length,
+            assignmentCountsByAgent: assignmentCounts,
             sampleContact:
               data.length > 0
                 ? {
@@ -229,9 +285,9 @@ const CallTable = () => {
                     name: data[0].name,
                     product_name: data[0].product_name,
                     price: data[0].price,
+                    assigned_to: data[0].assigned_to,
                   }
                 : 'No contacts',
-            allContacts: data,
           },
         );
         setContacts(data);
@@ -279,6 +335,13 @@ const CallTable = () => {
       }
     };
   }, [fetchContacts]);
+
+  // Update agents list when contacts change (to show only agents with assignments)
+  useEffect(() => {
+    if (contacts.length > 0) {
+      fetchAgents();
+    }
+  }, [contacts, fetchAgents]);
 
   // Close override menu on outside click/scroll/resize
   useEffect(() => {
@@ -378,6 +441,38 @@ const CallTable = () => {
       if ((effectiveStatus || '').toLowerCase() !== statusFilter) return false;
     }
 
+    // Agent filter
+    if (agentFilter !== 'all') {
+      const contactAssignedTo = contact.assigned_to;
+      
+      if (!contactAssignedTo) {
+        return false;
+      }
+      
+      // Convert both to numbers for reliable comparison
+      const contactAgentId = typeof contactAssignedTo === 'string' 
+        ? parseInt(contactAssignedTo, 10) 
+        : Number(contactAssignedTo);
+      const filterAgentId = typeof agentFilter === 'string'
+        ? parseInt(agentFilter, 10)
+        : Number(agentFilter);
+      
+      // Debug: Log first few matches for troubleshooting
+      if (contacts.indexOf(contact) < 3 && contactAgentId === filterAgentId) {
+        console.log('✅ Agent filter match:', {
+          contactId: contact.id,
+          contactAssignedTo,
+          contactAgentId,
+          filterAgentId,
+          match: contactAgentId === filterAgentId,
+        });
+      }
+      
+      if (contactAgentId !== filterAgentId) {
+        return false;
+      }
+    }
+
     return true;
   });
 
@@ -421,6 +516,23 @@ const CallTable = () => {
       }).length
     : baseFilteredContacts.length;
 
+  // Calculate total contacts assigned to selected agent (for display purposes)
+  const totalContactsForAgent = agentFilter !== 'all'
+    ? contacts.filter((contact) => {
+        const contactAssignedTo = contact.assigned_to;
+        if (!contactAssignedTo) return false;
+        
+        const contactAgentId = typeof contactAssignedTo === 'string' 
+          ? parseInt(contactAssignedTo, 10) 
+          : Number(contactAssignedTo);
+        const filterAgentId = typeof agentFilter === 'string'
+          ? parseInt(agentFilter, 10)
+          : Number(agentFilter);
+        
+        return contactAgentId === filterAgentId;
+      }).length
+    : null;
+
   // Pagination logic
   const totalPages = Math.ceil(filteredContacts.length / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
@@ -430,7 +542,7 @@ const CallTable = () => {
   // Reset to first page when filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [dateFilter, dateRange, storeFilter, productFilter, statusFilter]);
+  }, [dateFilter, dateRange, storeFilter, productFilter, statusFilter, agentFilter]);
 
   // Reset store filter if selected store is not available for the selected date
   useEffect(() => {
@@ -676,6 +788,8 @@ const CallTable = () => {
     setStoreFilter('all');
     setProductFilter('all');
     setStatusFilter('all');
+    setAgentFilter('all');
+    setAgentFilter('all');
   };
 
   // Handle call initiation
@@ -1448,8 +1562,11 @@ const CallTable = () => {
             <p className="text-xs sm:text-sm text-gray-600">
               Live contact status and calling interface •{' '}
               {filteredContacts.length} contacts
-              {(dateFilter || storeFilter !== 'all' || productFilter !== 'all' || statusFilter !== 'all') &&
-                ` (filtered from ${totalContactsForStore} total)`}
+              {agentFilter !== 'all' && totalContactsForAgent !== null ? (
+                ` (${filteredContacts.length} shown from ${totalContactsForAgent} assigned to ${availableAgents.find(a => a.id.toString() === agentFilter.toString())?.displayName || 'agent'})`
+              ) : (dateFilter || storeFilter !== 'all' || productFilter !== 'all' || statusFilter !== 'all' || agentFilter !== 'all') ? (
+                ` (filtered from ${totalContactsForStore} total)`
+              ) : null}
             </p>
           </div>
         </div>
@@ -1925,6 +2042,53 @@ const CallTable = () => {
                 </button>
               )}
             </div>
+
+            {/* Agent Filter */}
+            {availableAgents.length > 0 && (
+              <div className="flex items-center gap-2 relative z-10">
+                <label className="text-sm font-medium text-gray-700 whitespace-nowrap">
+                  Agent:
+                </label>
+                <div className="relative">
+                  <select
+                    value={agentFilter}
+                    onChange={(e) => setAgentFilter(e.target.value)}
+                    className="appearance-none px-3 py-2 pr-8 text-sm border border-gray-300 rounded-md bg-white text-gray-700 hover:bg-gray-50 hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1 focus:border-blue-500 transition-all duration-200 min-w-[140px] max-w-[200px] cursor-pointer"
+                  >
+                    <option value="all">All Agents</option>
+                    {availableAgents.map((agent) => (
+                      <option key={agent.id} value={agent.id.toString()}>
+                        {agent.displayName}
+                      </option>
+                    ))}
+                  </select>
+                  <div className="absolute inset-y-0 right-0 flex items-center pr-2 pointer-events-none">
+                    <svg
+                      className="w-4 h-4 text-gray-400"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M19 9l-7 7-7-7"
+                      />
+                    </svg>
+                  </div>
+                  {agentFilter !== 'all' && (
+                    <button
+                      onClick={() => setAgentFilter('all')}
+                      className="inline-flex items-center gap-1 px-2 py-2 text-xs text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-md transition-colors"
+                      title="Clear agent filter"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         </div>
 

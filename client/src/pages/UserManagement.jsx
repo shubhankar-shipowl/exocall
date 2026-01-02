@@ -30,6 +30,7 @@ import {
   isTodayInIndia,
   getYesterdayInIndia,
 } from "../utils/timezone";
+import { maskPhone } from "../utils/mask";
 
 const UserManagement = () => {
   const { isAdmin } = useAuth();
@@ -56,6 +57,8 @@ const UserManagement = () => {
   const [allContacts, setAllContacts] = useState([]); // All contacts for calendar dots
   const [contacts, setContacts] = useState([]); // Filtered contacts for assignment list
   const [selectedContacts, setSelectedContacts] = useState(new Set());
+  const [selectedProducts, setSelectedProducts] = useState(new Set()); // Multi-select products
+  const [showProductDropdown, setShowProductDropdown] = useState(false);
   const [isLoadingContacts, setIsLoadingContacts] = useState(false);
   const [isAssigning, setIsAssigning] = useState(false);
   const [filters, setFilters] = useState({
@@ -290,9 +293,11 @@ const UserManagement = () => {
     setSelectedAgent(agent);
     setShowAssignmentModal(true);
     setSelectedContacts(new Set());
+    setSelectedProducts(new Set());
     setFilters({ store: "", product_name: "", date: "" });
     setCurrentMonth(new Date());
     setShowDatePicker(false);
+    setShowProductDropdown(false);
     setDateRange("all");
     await fetchContactsForAssignment();
   };
@@ -342,8 +347,13 @@ const UserManagement = () => {
       });
     }
 
-    // Product filter
-    if (filters.product_name) {
+    // Product filter - support multiple products
+    if (selectedProducts.size > 0) {
+      filtered = filtered.filter((contact) => {
+        return contact.product_name && selectedProducts.has(contact.product_name);
+      });
+    } else if (filters.product_name) {
+      // Fallback to single product filter for backward compatibility
       filtered = filtered.filter((contact) => {
         return contact.product_name && contact.product_name === filters.product_name;
       });
@@ -407,7 +417,7 @@ const UserManagement = () => {
       filterContacts();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filters.store, filters.product_name, filters.date, allContacts, showAssignmentModal]);
+  }, [filters.store, filters.product_name, filters.date, allContacts, showAssignmentModal, selectedProducts]);
 
   // Close date picker when clicking outside
   useEffect(() => {
@@ -415,13 +425,16 @@ const UserManagement = () => {
       if (showDatePicker && !event.target.closest('[data-date-picker]')) {
         setShowDatePicker(false);
       }
+      if (showProductDropdown && !event.target.closest('[data-product-dropdown]')) {
+        setShowProductDropdown(false);
+      }
     };
 
     document.addEventListener('mousedown', handleClickOutside);
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
     };
-  }, [showDatePicker]);
+  }, [showDatePicker, showProductDropdown]);
 
   // Date filtering helper functions (same as CallTable)
   const formatDate = (dateInput) => {
@@ -560,6 +573,13 @@ const UserManagement = () => {
   };
 
   const handleToggleContact = (contactId) => {
+    // Prevent selecting already assigned contacts
+    const contact = contacts.find((c) => c.id === contactId);
+    if (contact && contact.assigned_to) {
+      toast.warning("This contact is already assigned to another agent. Please unassign it first.");
+      return;
+    }
+
     setSelectedContacts((prev) => {
       const newSet = new Set(prev);
       if (newSet.has(contactId)) {
@@ -572,16 +592,66 @@ const UserManagement = () => {
   };
 
   const handleSelectAll = () => {
-    if (selectedContacts.size === contacts.length) {
+    // Only select unassigned contacts
+    const unassignedContacts = contacts.filter((c) => !c.assigned_to);
+    const unassignedIds = unassignedContacts.map((c) => c.id);
+    
+    // Check if all unassigned contacts are already selected
+    const allUnassignedSelected = unassignedIds.length > 0 && 
+      unassignedIds.every((id) => selectedContacts.has(id));
+    
+    if (allUnassignedSelected) {
+      // Deselect all
       setSelectedContacts(new Set());
     } else {
-      setSelectedContacts(new Set(contacts.map((c) => c.id)));
+      // Select all unassigned contacts
+      setSelectedContacts(new Set(unassignedIds));
     }
+  };
+
+  const handleToggleProduct = (productName) => {
+    setSelectedProducts((prev) => {
+      const newSet = new Set(prev);
+      if (newSet.has(productName)) {
+        newSet.delete(productName);
+      } else {
+        newSet.add(productName);
+      }
+      return newSet;
+    });
+    // Clear single product filter when using multi-select
+    setFilters({ ...filters, product_name: "" });
+  };
+
+  const handleSelectAllProducts = () => {
+    if (selectedProducts.size === availableProducts.length) {
+      setSelectedProducts(new Set());
+    } else {
+      setSelectedProducts(new Set(availableProducts));
+    }
+    // Clear single product filter when using multi-select
+    setFilters({ ...filters, product_name: "" });
+  };
+
+  const handleClearProductSelection = () => {
+    setSelectedProducts(new Set());
+    setFilters({ ...filters, product_name: "" });
   };
 
   const handleAssignContacts = async () => {
     if (selectedContacts.size === 0) {
       toast.error("Please select at least one contact");
+      return;
+    }
+
+    // Check if any selected contacts are already assigned
+    const selectedContactsList = contacts.filter((c) => selectedContacts.has(c.id));
+    const alreadyAssigned = selectedContactsList.filter((c) => c.assigned_to);
+    
+    if (alreadyAssigned.length > 0) {
+      toast.error(
+        `Cannot assign: ${alreadyAssigned.length} contact(s) are already assigned to another agent. Please unassign them first or select only unassigned contacts.`
+      );
       return;
     }
 
@@ -612,8 +682,10 @@ const UserManagement = () => {
       setShowAssignmentModal(false);
       setSelectedAgent(null);
       setSelectedContacts(new Set());
+      setSelectedProducts(new Set());
       setFilters({ store: "", product_name: "", date: "" });
       setShowDatePicker(false);
+      setShowProductDropdown(false);
       setDateRange("all");
     } catch (error) {
       console.error("Error assigning contacts:", error);
@@ -1213,8 +1285,10 @@ const UserManagement = () => {
                   setShowAssignmentModal(false);
                   setSelectedAgent(null);
                   setSelectedContacts(new Set());
+                  setSelectedProducts(new Set());
                   setFilters({ store: "", product_name: "", date: "" });
                   setShowDatePicker(false);
+                  setShowProductDropdown(false);
                 }}
                 className="text-gray-400 hover:text-gray-600"
               >
@@ -1594,26 +1668,144 @@ const UserManagement = () => {
                   ))}
                 </select>
               </div>
-              <div>
+              <div className="relative" data-product-dropdown>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Filter by Product
                 </label>
-                <select
-                  value={filters.product_name}
-                  onChange={(e) =>
-                    setFilters({ ...filters, product_name: e.target.value })
-                  }
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="">All Products</option>
-                  {availableProducts.map((product) => (
-                    <option key={product} value={product}>
-                      {product}
-                    </option>
-                  ))}
-                </select>
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setShowProductDropdown(!showProductDropdown)}
+                    className="w-full px-3 py-2 text-left border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white flex items-center justify-between"
+                  >
+                    <span className="text-gray-700">
+                      {selectedProducts.size === 0
+                        ? "All Products"
+                        : `${selectedProducts.size} Product(s) Selected`}
+                    </span>
+                    <svg
+                      className={`w-5 h-5 text-gray-400 transition-transform ${
+                        showProductDropdown ? "transform rotate-180" : ""
+                      }`}
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M19 9l-7 7-7-7"
+                      />
+                    </svg>
+                  </button>
+                  {showProductDropdown && (
+                    <div className="absolute z-50 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-auto">
+                      <div className="p-2 border-b border-gray-200 sticky top-0 bg-white">
+                        <div className="flex items-center justify-between mb-2">
+                          <label className="flex items-center gap-2 text-sm font-medium text-gray-700 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={selectedProducts.size === availableProducts.length && availableProducts.length > 0}
+                              onChange={handleSelectAllProducts}
+                              className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
+                            />
+                            <span>Select All</span>
+                          </label>
+                          {selectedProducts.size > 0 && (
+                            <button
+                              onClick={handleClearProductSelection}
+                              className="text-xs text-blue-600 hover:text-blue-800"
+                            >
+                              Clear
+                            </button>
+                          )}
+                        </div>
+                        <div className="text-xs text-gray-500">
+                          {selectedProducts.size > 0
+                            ? `${selectedProducts.size} product(s) selected`
+                            : "No products selected"}
+                        </div>
+                      </div>
+                      <div className="p-2">
+                        {availableProducts.length === 0 ? (
+                          <div className="text-sm text-gray-500 py-2 text-center">
+                            No products available
+                          </div>
+                        ) : (
+                          availableProducts.map((product) => {
+                            const productContacts = allContacts.filter(
+                              (c) =>
+                                c.product_name === product &&
+                                (!filters.store || c.store === filters.store) &&
+                                (!filters.date ||
+                                  isDateInRange(c.createdAt || c.created_at, filters.date))
+                            );
+                            return (
+                              <label
+                                key={product}
+                                className="flex items-start gap-2 p-2 hover:bg-gray-50 rounded cursor-pointer"
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={selectedProducts.has(product)}
+                                  onChange={() => handleToggleProduct(product)}
+                                  className="mt-1 w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
+                                />
+                                <div className="flex-1 min-w-0">
+                                  <div className="text-sm font-medium text-gray-900 truncate">
+                                    {product}
+                                  </div>
+                                  <div className="text-xs text-gray-500">
+                                    {productContacts.length} contact(s)
+                                  </div>
+                                </div>
+                              </label>
+                            );
+                          })
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
+
+            {/* Selected Products Summary */}
+            {selectedProducts.size > 0 && (
+              <div className="mb-4 p-4 bg-green-50 border border-green-200 rounded-lg">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <Package className="w-5 h-5 text-green-600" />
+                    <h4 className="text-sm font-semibold text-green-900">
+                      {selectedProducts.size} Product(s) Selected
+                    </h4>
+                  </div>
+                  <button
+                    onClick={handleClearProductSelection}
+                    className="text-xs px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700 transition-colors"
+                  >
+                    Clear All
+                  </button>
+                </div>
+                <div className="space-y-2 max-h-32 overflow-y-auto">
+                  {Array.from(selectedProducts).map((product) => {
+                    const productContacts = contacts.filter((c) => c.product_name === product);
+                    return (
+                      <div key={product} className="flex items-center gap-2 text-xs">
+                        <span className="font-medium text-green-800">{product}:</span>
+                        <span className="text-green-600">
+                          {productContacts.length} contact(s) shown
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+                <p className="text-xs text-green-700 mt-2">
+                  💡 Showing contacts from {selectedProducts.size} selected product(s). You can select individual contacts or use "Select All" to assign all visible contacts.
+                </p>
+              </div>
+            )}
 
             {/* Selected Contacts Summary */}
             {selectedContacts.size > 0 && (
@@ -1635,7 +1827,7 @@ const UserManagement = () => {
                 <div className="space-y-2 max-h-32 overflow-y-auto">
                   {(() => {
                     // Group selected contacts by product
-                    const selectedContactsList = allContacts.filter(c => selectedContacts.has(c.id));
+                    const selectedContactsList = contacts.filter(c => selectedContacts.has(c.id));
                     const groupedByProduct = selectedContactsList.reduce((acc, contact) => {
                       const product = contact.product_name || 'No Product';
                       if (!acc[product]) acc[product] = [];
@@ -1673,69 +1865,97 @@ const UserManagement = () => {
                     <div className="flex items-center gap-2">
                       <input
                         type="checkbox"
-                        checked={selectedContacts.size === contacts.length && contacts.length > 0}
+                        checked={(() => {
+                          const unassignedContacts = contacts.filter((c) => !c.assigned_to);
+                          const unassignedIds = unassignedContacts.map((c) => c.id);
+                          return unassignedIds.length > 0 && 
+                            unassignedIds.every((id) => selectedContacts.has(id));
+                        })()}
                         onChange={handleSelectAll}
                         className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
                       />
                       <span className="text-sm font-medium text-gray-700">
-                        Select All ({selectedContacts.size} selected)
+                        Select All Unassigned ({selectedContacts.size} selected)
                       </span>
                     </div>
-                    <span className="text-sm text-gray-500">
-                      {contacts.length} contact(s) found
-                    </span>
+                    <div className="flex items-center gap-4">
+                      <span className="text-sm text-gray-500">
+                        {contacts.filter((c) => !c.assigned_to).length} unassigned
+                      </span>
+                      {contacts.filter((c) => c.assigned_to).length > 0 && (
+                        <span className="text-sm text-yellow-600">
+                          {contacts.filter((c) => c.assigned_to).length} already assigned
+                        </span>
+                      )}
+                    </div>
                   </div>
                   <div className="space-y-2">
-                    {contacts.map((contact) => (
-                      <div
-                        key={contact.id}
-                        className={`flex items-center gap-3 p-3 border rounded-md hover:bg-gray-50 ${
-                          selectedContacts.has(contact.id)
-                            ? "border-blue-500 bg-blue-50"
-                            : "border-gray-200"
-                        }`}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={selectedContacts.has(contact.id)}
-                          onChange={() => handleToggleContact(contact.id)}
-                          className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
-                        />
-                        <div className="flex-1">
-                          <div className="flex items-center gap-4">
-                            <div className="flex-1">
-                              <div className="font-medium text-gray-900">
-                                {contact.name}
+                    {contacts.map((contact) => {
+                      const isAssigned = !!contact.assigned_to;
+                      const isSelected = selectedContacts.has(contact.id);
+                      
+                      return (
+                        <div
+                          key={contact.id}
+                          className={`flex items-center gap-3 p-3 border rounded-md ${
+                            isAssigned
+                              ? "bg-gray-50 opacity-75 cursor-not-allowed"
+                              : isSelected
+                              ? "border-blue-500 bg-blue-50 hover:bg-blue-50"
+                              : "border-gray-200 hover:bg-gray-50"
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => handleToggleContact(contact.id)}
+                            disabled={isAssigned}
+                            className={`w-4 h-4 rounded focus:ring-blue-500 ${
+                              isAssigned
+                                ? "text-gray-400 cursor-not-allowed"
+                                : "text-blue-600"
+                            }`}
+                            title={isAssigned ? "This contact is already assigned to another agent" : ""}
+                          />
+                          <div className="flex-1">
+                            <div className="flex items-center gap-4">
+                              <div className="flex-1">
+                                <div className={`font-medium ${isAssigned ? "text-gray-500" : "text-gray-900"}`}>
+                                  {contact.name}
+                                  {isAssigned && (
+                                    <span className="ml-2 text-xs text-yellow-600">(Already Assigned)</span>
+                                  )}
+                                </div>
+                                <div className={`text-sm ${isAssigned ? "text-gray-400" : "text-gray-500"}`}>
+                                  {maskPhone(contact.phone || "N/A")}
+                                </div>
                               </div>
-                              <div className="text-sm text-gray-500">
-                                {contact.phone}
+                              {contact.store && (
+                                <div className={`flex items-center gap-1 text-sm ${isAssigned ? "text-gray-400" : "text-gray-600"}`}>
+                                  <Building2 className="w-4 h-4" />
+                                  {contact.store}
+                                </div>
+                              )}
+                              {contact.product_name && (
+                                <div className={`flex items-center gap-1 text-sm ${isAssigned ? "text-gray-400" : "text-gray-600"}`}>
+                                  <Package className="w-4 h-4" />
+                                  {contact.product_name}
+                                </div>
+                              )}
+                              <div
+                                className={`px-2 py-1 rounded text-xs font-medium ${
+                                  isAssigned
+                                    ? "bg-yellow-100 text-yellow-800 border border-yellow-300"
+                                    : "bg-gray-100 text-gray-800"
+                                }`}
+                              >
+                                {isAssigned ? "Already Assigned" : "Unassigned"}
                               </div>
-                            </div>
-                            {contact.store && (
-                              <div className="flex items-center gap-1 text-sm text-gray-600">
-                                <Building2 className="w-4 h-4" />
-                                {contact.store}
-                              </div>
-                            )}
-                            {contact.product_name && (
-                              <div className="flex items-center gap-1 text-sm text-gray-600">
-                                <Package className="w-4 h-4" />
-                                {contact.product_name}
-                              </div>
-                            )}
-                            <div
-                              className={`px-2 py-1 rounded text-xs font-medium ${
-                                contact.assigned_to
-                                  ? "bg-yellow-100 text-yellow-800"
-                                  : "bg-gray-100 text-gray-800"
-                              }`}
-                            >
-                              {contact.assigned_to ? "Assigned" : "Unassigned"}
                             </div>
                           </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               )}
@@ -1748,8 +1968,10 @@ const UserManagement = () => {
                   setShowAssignmentModal(false);
                   setSelectedAgent(null);
                   setSelectedContacts(new Set());
+                  setSelectedProducts(new Set());
                   setFilters({ store: "", product_name: "", date: "" });
                   setShowDatePicker(false);
+                  setShowProductDropdown(false);
                 }}
                 className="flex-1 px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
                 disabled={isAssigning}

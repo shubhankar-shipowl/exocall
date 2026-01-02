@@ -28,53 +28,88 @@ export const AuthProvider = ({ children }) => {
 
   // Check if user is authenticated
   useEffect(() => {
+    let isMounted = true;
+    let timeoutId = null;
+    let abortController = null;
+
     const checkAuth = async () => {
+      // Prevent multiple simultaneous requests
+      if (!isMounted) return;
+
       console.log("AuthContext checkAuth - token:", token, "user:", user);
 
       // Skip auth check if we already have a user (just logged in)
       if (user) {
         console.log("User already set, skipping auth check");
-        setIsLoading(false);
+        if (isMounted) setIsLoading(false);
         return;
       }
 
       if (token) {
+        // Cancel any previous request
+        if (abortController) {
+          abortController.abort();
+        }
+        abortController = new AbortController();
+
         try {
           const response = await fetch("/api/auth/profile", {
             headers: {
               Authorization: `Bearer ${token}`,
             },
+            signal: abortController.signal,
           });
+
+          if (!isMounted) return;
 
           if (response.ok) {
             const data = await response.json();
-            setUser(data.user);
+            if (isMounted) {
+              setUser(data.user);
+              setIsLoading(false);
+            }
           } else if (response.status === 401) {
             // Token is invalid or expired
-            localStorage.removeItem("token");
-            setToken(null);
-            setUser(null);
+            if (isMounted) {
+              localStorage.removeItem("token");
+              setToken(null);
+              setUser(null);
+              setIsLoading(false);
+            }
           } else {
-            // Other error
+            // Other error - don't clear token on network/server errors, just stop loading
             console.error("Auth check failed with status:", response.status);
-            localStorage.removeItem("token");
-            setToken(null);
-            setUser(null);
+            if (isMounted) {
+              setIsLoading(false);
+            }
           }
         } catch (error) {
+          // Ignore abort errors
+          if (error.name === 'AbortError') return;
+          
+          // Network error - don't clear token, just stop loading
           console.error("Auth check failed:", error);
-          localStorage.removeItem("token");
-          setToken(null);
-          setUser(null);
+          if (isMounted) {
+            setIsLoading(false);
+          }
         }
       } else {
         console.log("No token found, user not authenticated");
+        if (isMounted) setIsLoading(false);
       }
-      setIsLoading(false);
     };
 
-    checkAuth();
-  }, [token]);
+    // Debounce to prevent rapid-fire requests
+    timeoutId = setTimeout(() => {
+      checkAuth();
+    }, 100);
+
+    return () => {
+      isMounted = false;
+      if (timeoutId) clearTimeout(timeoutId);
+      if (abortController) abortController.abort();
+    };
+  }, [token]); // Only depend on token, not user
 
   const login = async (email, password) => {
     try {

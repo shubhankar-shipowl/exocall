@@ -18,6 +18,7 @@ router.post("/login", login);
 
 // Protected routes
 router.get("/profile", authenticate, getProfile);
+router.get("/me", authenticate, getProfile); // Alias for backward compatibility
 router.put("/profile", authenticate, updateProfile);
 router.put("/change-password", authenticate, changePassword);
 

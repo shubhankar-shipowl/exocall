@@ -83,6 +83,26 @@ const UserManagement = () => {
     fetchUserStats();
   }, []);
 
+  // Helper function to check if a contact is assigned to a different agent
+  const isContactAssignedToDifferentAgent = (contact) => {
+    if (!contact || !contact.assigned_to) return false;
+    if (!selectedAgent) return !!contact.assigned_to;
+    
+    const contactAssignedTo = contact.assigned_to;
+    const contactAgentId = contactAssignedTo
+      ? typeof contactAssignedTo === "string"
+        ? parseInt(contactAssignedTo, 10)
+        : Number(contactAssignedTo)
+      : null;
+    const selectedAgentId = selectedAgent
+      ? typeof selectedAgent.id === "string"
+        ? parseInt(selectedAgent.id, 10)
+        : Number(selectedAgent.id)
+      : null;
+    
+    return contactAgentId !== null && contactAgentId !== selectedAgentId;
+  };
+
   const fetchUsers = async () => {
     try {
       const token = localStorage.getItem("token");
@@ -359,6 +379,9 @@ const UserManagement = () => {
       });
     }
 
+    // Admin can see all contacts, including those assigned to other agents (allows reassignment)
+    // No need to filter out contacts assigned to other agents
+
     setContacts(filtered);
 
     // Extract unique stores and products from date-filtered contacts (same as CallTable)
@@ -373,7 +396,9 @@ const UserManagement = () => {
     const stores = [
       ...new Set(dateFilteredContacts.map((c) => c.store).filter(Boolean)),
     ].sort();
-    const products = [
+    
+    // Get all products, but filter out products that are already fully assigned to the selected agent
+    let allProducts = [
       ...new Set(
         dateFilteredContacts
           .filter((c) => !filters.store || c.store === filters.store)
@@ -381,6 +406,44 @@ const UserManagement = () => {
           .filter(Boolean)
       ),
     ].sort();
+    
+    // Filter out products where all contacts for that product (in the selected store and date) are already assigned to the selected agent
+    const products = allProducts.filter((product) => {
+      // If there's no selected agent, show all products
+      if (!selectedAgent) return true;
+      
+      const agentId = selectedAgent.id
+        ? typeof selectedAgent.id === "string"
+          ? parseInt(selectedAgent.id, 10)
+          : Number(selectedAgent.id)
+        : null;
+      
+      if (!agentId) return true;
+      
+      // Get all contacts for this product matching the current filters (store and date)
+      const productContacts = dateFilteredContacts.filter((c) => {
+        if (c.product_name !== product) return false;
+        if (filters.store && c.store !== filters.store) return false;
+        return true;
+      });
+      
+      // If no contacts for this product with current filters, exclude it
+      if (productContacts.length === 0) return false;
+      
+      // Check if all contacts are already assigned to this agent
+      const allAssignedToAgent = productContacts.every((contact) => {
+        const assignedTo = contact.assigned_to;
+        const contactAgentId = assignedTo
+          ? typeof assignedTo === "string"
+            ? parseInt(assignedTo, 10)
+            : Number(assignedTo)
+          : null;
+        return contactAgentId === agentId;
+      });
+      
+      // If all contacts for this product (in the selected store and date) are already assigned to this agent, exclude it
+      return !allAssignedToAgent;
+    });
 
     setAvailableStores(stores);
     setAvailableProducts(products);
@@ -417,7 +480,7 @@ const UserManagement = () => {
       filterContacts();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filters.store, filters.product_name, filters.date, allContacts, showAssignmentModal, selectedProducts]);
+  }, [filters.store, filters.product_name, filters.date, allContacts, showAssignmentModal, selectedProducts, selectedAgent]);
 
   // Close date picker when clicking outside
   useEffect(() => {
@@ -573,13 +636,7 @@ const UserManagement = () => {
   };
 
   const handleToggleContact = (contactId) => {
-    // Prevent selecting already assigned contacts
-    const contact = contacts.find((c) => c.id === contactId);
-    if (contact && contact.assigned_to) {
-      toast.warning("This contact is already assigned to another agent. Please unassign it first.");
-      return;
-    }
-
+    // Admin can select any contact, even if assigned to another agent (allows reassignment)
     setSelectedContacts((prev) => {
       const newSet = new Set(prev);
       if (newSet.has(contactId)) {
@@ -592,20 +649,19 @@ const UserManagement = () => {
   };
 
   const handleSelectAll = () => {
-    // Only select unassigned contacts
-    const unassignedContacts = contacts.filter((c) => !c.assigned_to);
-    const unassignedIds = unassignedContacts.map((c) => c.id);
+    // Admin can select all contacts, even if assigned to other agents (allows reassignment)
+    const allContactIds = contacts.map((c) => c.id);
     
-    // Check if all unassigned contacts are already selected
-    const allUnassignedSelected = unassignedIds.length > 0 && 
-      unassignedIds.every((id) => selectedContacts.has(id));
+    // Check if all contacts are already selected
+    const allSelected = allContactIds.length > 0 && 
+      allContactIds.every((id) => selectedContacts.has(id));
     
-    if (allUnassignedSelected) {
+    if (allSelected) {
       // Deselect all
       setSelectedContacts(new Set());
     } else {
-      // Select all unassigned contacts
-      setSelectedContacts(new Set(unassignedIds));
+      // Select all contacts
+      setSelectedContacts(new Set(allContactIds));
     }
   };
 
@@ -644,16 +700,8 @@ const UserManagement = () => {
       return;
     }
 
-    // Check if any selected contacts are already assigned
-    const selectedContactsList = contacts.filter((c) => selectedContacts.has(c.id));
-    const alreadyAssigned = selectedContactsList.filter((c) => c.assigned_to);
-    
-    if (alreadyAssigned.length > 0) {
-      toast.error(
-        `Cannot assign: ${alreadyAssigned.length} contact(s) are already assigned to another agent. Please unassign them first or select only unassigned contacts.`
-      );
-      return;
-    }
+    // Admin can assign contacts even if already assigned to another agent (allows reassignment)
+    // No need to check for existing assignments
 
     setIsAssigning(true);
     try {
@@ -1269,9 +1317,9 @@ const UserManagement = () => {
 
       {/* Assignment Modal */}
       {showAssignmentModal && selectedAgent && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 max-w-4xl w-full mx-4 max-h-[90vh] overflow-hidden flex flex-col">
-            <div className="flex items-center justify-between mb-4">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 overflow-y-auto py-4">
+          <div className="bg-white rounded-lg p-6 max-w-4xl w-full mx-4 my-4 max-h-[85vh] flex flex-col overflow-hidden relative">
+            <div className="flex items-center justify-between mb-4 flex-shrink-0">
               <div>
                 <h3 className="text-lg font-semibold text-gray-900">
                   Assign Tasks to {selectedAgent?.username || 'Agent'}
@@ -1297,7 +1345,7 @@ const UserManagement = () => {
             </div>
 
             {/* Filters */}
-            <div className="grid grid-cols-3 gap-4 mb-4">
+            <div className="grid grid-cols-3 gap-4 mb-4 flex-shrink-0">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Select Date
@@ -1773,35 +1821,33 @@ const UserManagement = () => {
 
             {/* Selected Products Summary */}
             {selectedProducts.size > 0 && (
-              <div className="mb-4 p-4 bg-green-50 border border-green-200 rounded-lg">
-                <div className="flex items-center justify-between mb-3">
+              <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg flex-shrink-0">
+                <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-2">
-                    <Package className="w-5 h-5 text-green-600" />
+                    <Package className="w-4 h-4 text-green-600" />
                     <h4 className="text-sm font-semibold text-green-900">
                       {selectedProducts.size} Product(s) Selected
                     </h4>
                   </div>
                   <button
                     onClick={handleClearProductSelection}
-                    className="text-xs px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700 transition-colors"
+                    className="text-xs px-2 py-1 bg-green-600 text-white rounded hover:bg-green-700 transition-colors"
                   >
                     Clear All
                   </button>
                 </div>
-                <div className="space-y-2 max-h-32 overflow-y-auto">
+                <div className="space-y-1 max-h-32 overflow-y-auto text-xs pr-2">
                   {Array.from(selectedProducts).map((product) => {
                     const productContacts = contacts.filter((c) => c.product_name === product);
                     return (
-                      <div key={product} className="flex items-center gap-2 text-xs">
-                        <span className="font-medium text-green-800">{product}:</span>
-                        <span className="text-green-600">
-                          {productContacts.length} contact(s) shown
-                        </span>
+                      <div key={product} className="flex items-center gap-2">
+                        <span className="font-medium text-green-800 truncate flex-1">{product}:</span>
+                        <span className="text-green-600 whitespace-nowrap">{productContacts.length} contact(s)</span>
                       </div>
                     );
                   })}
                 </div>
-                <p className="text-xs text-green-700 mt-2">
+                <p className="text-xs text-green-700 mt-2 hidden sm:block">
                   💡 Showing contacts from {selectedProducts.size} selected product(s). You can select individual contacts or use "Select All" to assign all visible contacts.
                 </p>
               </div>
@@ -1809,22 +1855,22 @@ const UserManagement = () => {
 
             {/* Selected Contacts Summary */}
             {selectedContacts.size > 0 && (
-              <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-                <div className="flex items-center justify-between mb-3">
+              <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg flex-shrink-0">
+                <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-2">
-                    <Package className="w-5 h-5 text-blue-600" />
+                    <Package className="w-4 h-4 text-blue-600" />
                     <h4 className="text-sm font-semibold text-blue-900">
-                      {selectedContacts.size} Contact(s) Selected Across Multiple Products
+                      {selectedContacts.size} Contact(s) Selected
                     </h4>
                   </div>
                   <button
                     onClick={() => setSelectedContacts(new Set())}
-                    className="text-xs px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+                    className="text-xs px-2 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
                   >
                     Clear All
                   </button>
                 </div>
-                <div className="space-y-2 max-h-32 overflow-y-auto">
+                <div className="space-y-1 max-h-32 overflow-y-auto text-xs pr-2">
                   {(() => {
                     // Group selected contacts by product
                     const selectedContactsList = contacts.filter(c => selectedContacts.has(c.id));
@@ -1836,21 +1882,21 @@ const UserManagement = () => {
                     }, {});
                     
                     return Object.entries(groupedByProduct).map(([product, contacts]) => (
-                      <div key={product} className="flex items-center gap-2 text-xs">
-                        <span className="font-medium text-blue-800">{product}:</span>
-                        <span className="text-blue-600">{contacts.length} contact(s)</span>
+                      <div key={product} className="flex items-center gap-2">
+                        <span className="font-medium text-blue-800 truncate flex-1">{product}:</span>
+                        <span className="text-blue-600 whitespace-nowrap">{contacts.length} contact(s)</span>
                       </div>
                     ));
                   })()}
                 </div>
-                <p className="text-xs text-blue-700 mt-2">
+                <p className="text-xs text-blue-700 mt-2 hidden sm:block">
                   💡 Tip: You can select contacts from different products and assign them all at once!
                 </p>
               </div>
             )}
 
             {/* Contacts List */}
-            <div className="flex-1 overflow-y-auto border border-gray-200 rounded-md">
+            <div className="flex-1 overflow-y-auto border border-gray-200 rounded-md min-h-0 mb-4">
               {isLoadingContacts ? (
                 <div className="flex items-center justify-center h-64">
                   <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
@@ -1866,42 +1912,42 @@ const UserManagement = () => {
                       <input
                         type="checkbox"
                         checked={(() => {
-                          const unassignedContacts = contacts.filter((c) => !c.assigned_to);
-                          const unassignedIds = unassignedContacts.map((c) => c.id);
-                          return unassignedIds.length > 0 && 
-                            unassignedIds.every((id) => selectedContacts.has(id));
+                          const allContactIds = contacts.map((c) => c.id);
+                          return allContactIds.length > 0 && 
+                            allContactIds.every((id) => selectedContacts.has(id));
                         })()}
                         onChange={handleSelectAll}
                         className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
                       />
                       <span className="text-sm font-medium text-gray-700">
-                        Select All Unassigned ({selectedContacts.size} selected)
+                        Select All ({selectedContacts.size} selected)
                       </span>
                     </div>
                     <div className="flex items-center gap-4">
                       <span className="text-sm text-gray-500">
-                        {contacts.filter((c) => !c.assigned_to).length} unassigned
+                        {contacts.filter((c) => !isContactAssignedToDifferentAgent(c)).length} unassigned
                       </span>
-                      {contacts.filter((c) => c.assigned_to).length > 0 && (
+                      {contacts.filter((c) => isContactAssignedToDifferentAgent(c)).length > 0 && (
                         <span className="text-sm text-yellow-600">
-                          {contacts.filter((c) => c.assigned_to).length} already assigned
+                          {contacts.filter((c) => isContactAssignedToDifferentAgent(c)).length} assigned to other agent(s)
                         </span>
                       )}
                     </div>
                   </div>
                   <div className="space-y-2">
                     {contacts.map((contact) => {
-                      const isAssigned = !!contact.assigned_to;
+                      // Check if contact is assigned to a DIFFERENT agent (for display purposes only)
+                      const isAssigned = isContactAssignedToDifferentAgent(contact);
                       const isSelected = selectedContacts.has(contact.id);
                       
                       return (
                         <div
                           key={contact.id}
                           className={`flex items-center gap-3 p-3 border rounded-md ${
-                            isAssigned
-                              ? "bg-gray-50 opacity-75 cursor-not-allowed"
-                              : isSelected
+                            isSelected
                               ? "border-blue-500 bg-blue-50 hover:bg-blue-50"
+                              : isAssigned
+                              ? "border-yellow-200 bg-yellow-50 hover:bg-yellow-100"
                               : "border-gray-200 hover:bg-gray-50"
                           }`}
                         >
@@ -1909,35 +1955,30 @@ const UserManagement = () => {
                             type="checkbox"
                             checked={isSelected}
                             onChange={() => handleToggleContact(contact.id)}
-                            disabled={isAssigned}
-                            className={`w-4 h-4 rounded focus:ring-blue-500 ${
-                              isAssigned
-                                ? "text-gray-400 cursor-not-allowed"
-                                : "text-blue-600"
-                            }`}
-                            title={isAssigned ? "This contact is already assigned to another agent" : ""}
+                            className="w-4 h-4 rounded focus:ring-blue-500 text-blue-600"
+                            title={isAssigned ? "This contact is assigned to another agent, but you can reassign it" : ""}
                           />
                           <div className="flex-1">
                             <div className="flex items-center gap-4">
                               <div className="flex-1">
-                                <div className={`font-medium ${isAssigned ? "text-gray-500" : "text-gray-900"}`}>
+                                <div className={`font-medium ${isAssigned ? "text-yellow-800" : "text-gray-900"}`}>
                                   {contact.name}
                                   {isAssigned && (
-                                    <span className="ml-2 text-xs text-yellow-600">(Already Assigned)</span>
+                                    <span className="ml-2 text-xs text-yellow-600">(Assigned to another agent - can reassign)</span>
                                   )}
                                 </div>
-                                <div className={`text-sm ${isAssigned ? "text-gray-400" : "text-gray-500"}`}>
+                                <div className={`text-sm ${isAssigned ? "text-yellow-700" : "text-gray-500"}`}>
                                   {maskPhone(contact.phone || "N/A")}
                                 </div>
                               </div>
                               {contact.store && (
-                                <div className={`flex items-center gap-1 text-sm ${isAssigned ? "text-gray-400" : "text-gray-600"}`}>
+                                <div className={`flex items-center gap-1 text-sm ${isAssigned ? "text-yellow-700" : "text-gray-600"}`}>
                                   <Building2 className="w-4 h-4" />
                                   {contact.store}
                                 </div>
                               )}
                               {contact.product_name && (
-                                <div className={`flex items-center gap-1 text-sm ${isAssigned ? "text-gray-400" : "text-gray-600"}`}>
+                                <div className={`flex items-center gap-1 text-sm ${isAssigned ? "text-yellow-700" : "text-gray-600"}`}>
                                   <Package className="w-4 h-4" />
                                   {contact.product_name}
                                 </div>
@@ -1949,7 +1990,7 @@ const UserManagement = () => {
                                     : "bg-gray-100 text-gray-800"
                                 }`}
                               >
-                                {isAssigned ? "Already Assigned" : "Unassigned"}
+                                {isAssigned ? "Assigned to Other Agent" : "Unassigned"}
                               </div>
                             </div>
                           </div>
@@ -1962,7 +2003,7 @@ const UserManagement = () => {
             </div>
 
             {/* Action Buttons */}
-            <div className="flex gap-3 pt-4 border-t border-gray-200 mt-4">
+            <div className="flex gap-3 pt-4 border-t border-gray-200 mt-auto flex-shrink-0 bg-white sticky bottom-0">
               <button
                 onClick={() => {
                   setShowAssignmentModal(false);

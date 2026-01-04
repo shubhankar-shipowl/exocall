@@ -650,7 +650,7 @@ const assignContacts = async (req, res) => {
       return res.status(400).json({ error: 'User is not an agent' });
     }
 
-    // Check if assigned_to column exists before checking for already assigned contacts
+    // Check if assigned_to column exists
     let hasAssignedToColumn = false;
     try {
       const [columns] = await sequelize.query("SHOW COLUMNS FROM contacts LIKE 'assigned_to'");
@@ -659,31 +659,15 @@ const assignContacts = async (req, res) => {
       hasAssignedToColumn = false;
     }
 
-    // Check if any contacts are already assigned to a different agent (only if column exists)
-    if (hasAssignedToColumn) {
-      const [existingAssignments] = await sequelize.query(
-        `SELECT id, assigned_to FROM contacts WHERE id IN (${contactIds.map(() => '?').join(',')}) AND assigned_to IS NOT NULL AND assigned_to != ?`,
-        {
-          replacements: [...contactIds, agentId],
-        }
-      );
-
-      if (existingAssignments && existingAssignments.length > 0) {
-        return res.status(400).json({
-          error: `Cannot assign: ${existingAssignments.length} contact(s) are already assigned to another agent. Please unassign them first.`,
-          alreadyAssignedCount: existingAssignments.length,
-          alreadyAssignedIds: existingAssignments.map(a => a.id),
-        });
-      }
-    }
-
+    // Admin can assign contacts even if already assigned to another agent (allow reassignment)
     // Update contacts using raw SQL (try directly, catch column errors)
     const placeholders = contactIds.map(() => '?').join(',');
     try {
+      // Allow assignment even if already assigned to another agent (admin can reassign)
       const [result] = await sequelize.query(
-        `UPDATE contacts SET assigned_to = ?, updatedAt = NOW() WHERE id IN (${placeholders}) AND (assigned_to IS NULL OR assigned_to = ?)`,
+        `UPDATE contacts SET assigned_to = ?, updatedAt = NOW() WHERE id IN (${placeholders})`,
         {
-          replacements: [agentId, ...contactIds, agentId],
+          replacements: [agentId, ...contactIds],
         }
       );
 
@@ -713,26 +697,12 @@ const assignContacts = async (req, res) => {
           await sequelize.query(
             'ALTER TABLE contacts ADD CONSTRAINT fk_contacts_assigned_to FOREIGN KEY (assigned_to) REFERENCES users(id) ON DELETE SET NULL'
           );
-          // Check for already assigned contacts before retry
-          const [existingAssignmentsRetry] = await sequelize.query(
-            `SELECT id, assigned_to FROM contacts WHERE id IN (${placeholders}) AND assigned_to IS NOT NULL AND assigned_to != ?`,
-            {
-              replacements: [...contactIds, agentId],
-            }
-          );
 
-          if (existingAssignmentsRetry && existingAssignmentsRetry.length > 0) {
-            return res.status(400).json({
-              error: `Cannot assign: ${existingAssignmentsRetry.length} contact(s) are already assigned to another agent. Please unassign them first.`,
-              alreadyAssignedCount: existingAssignmentsRetry.length,
-            });
-          }
-
-          // Retry the update
+          // Retry the update - allow assignment even if already assigned to another agent
           const [result] = await sequelize.query(
-            `UPDATE contacts SET assigned_to = ?, updatedAt = NOW() WHERE id IN (${placeholders}) AND (assigned_to IS NULL OR assigned_to = ?)`,
+            `UPDATE contacts SET assigned_to = ?, updatedAt = NOW() WHERE id IN (${placeholders})`,
             {
-              replacements: [agentId, ...contactIds, agentId],
+              replacements: [agentId, ...contactIds],
             }
           );
           const assignedCount = result?.affectedRows || 0;
@@ -751,25 +721,11 @@ const assignContacts = async (req, res) => {
         } catch (alterError) {
           // If column already exists, just retry the update
           if (alterError.message && alterError.message.includes('Duplicate column name')) {
-            // Check for already assigned contacts before retry
-            const [existingAssignmentsRetry2] = await sequelize.query(
-              `SELECT id, assigned_to FROM contacts WHERE id IN (${placeholders}) AND assigned_to IS NOT NULL AND assigned_to != ?`,
-              {
-                replacements: [...contactIds, agentId],
-              }
-            );
-
-            if (existingAssignmentsRetry2 && existingAssignmentsRetry2.length > 0) {
-              return res.status(400).json({
-                error: `Cannot assign: ${existingAssignmentsRetry2.length} contact(s) are already assigned to another agent. Please unassign them first.`,
-                alreadyAssignedCount: existingAssignmentsRetry2.length,
-              });
-            }
-
+            // Allow assignment even if already assigned to another agent (admin can reassign)
             const [result] = await sequelize.query(
-              `UPDATE contacts SET assigned_to = ?, updatedAt = NOW() WHERE id IN (${placeholders}) AND (assigned_to IS NULL OR assigned_to = ?)`,
+              `UPDATE contacts SET assigned_to = ?, updatedAt = NOW() WHERE id IN (${placeholders})`,
               {
-                replacements: [agentId, ...contactIds, agentId],
+                replacements: [agentId, ...contactIds],
               }
             );
             const assignedCount = result?.affectedRows || 0;

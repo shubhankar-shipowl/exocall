@@ -76,6 +76,18 @@ export const AuthProvider = ({ children }) => {
               setUser(null);
               setIsLoading(false);
             }
+          } else if (response.status === 503) {
+            // Backend server temporarily unavailable
+            if (isMounted) {
+              console.warn('Backend server temporarily unavailable, will retry...');
+              setIsLoading(false);
+            }
+          } else if (response.status === 503) {
+            // Backend server temporarily unavailable
+            if (isMounted) {
+              console.warn('Backend server temporarily unavailable, will retry...');
+              setIsLoading(false);
+            }
           } else {
             // Other error - don't clear token on network/server errors, just stop loading
             console.error('Auth check failed with status:', response.status);
@@ -86,6 +98,24 @@ export const AuthProvider = ({ children }) => {
         } catch (error) {
           // Ignore abort errors
           if (error.name === 'AbortError') return;
+          
+          // Handle network errors (proxy errors, connection refused, etc.)
+          if (error.message && (
+            error.message.includes('Failed to fetch') ||
+            error.message.includes('ECONNREFUSED') ||
+            error.message.includes('NetworkError')
+          )) {
+            console.warn('Backend server connection error, will retry on next attempt:', error.message);
+            if (isMounted) {
+              setIsLoading(false);
+            }
+            return;
+          }
+          
+          console.error('Error fetching profile:', error);
+          if (isMounted) {
+            setIsLoading(false);
+          }
 
           // Network error - don't clear token, just stop loading
           console.error('Auth check failed:', error);
@@ -221,11 +251,24 @@ export const AuthProvider = ({ children }) => {
         const data = await response.json();
         setUser(data.user);
         return true;
+      } else if (response.status === 503) {
+        // Backend temporarily unavailable, don't logout
+        console.warn('Backend temporarily unavailable during token refresh');
+        return false;
       } else {
         logout();
         return false;
       }
     } catch (error) {
+      // Handle network errors gracefully
+      if (error.message && (
+        error.message.includes('Failed to fetch') ||
+        error.message.includes('ECONNREFUSED') ||
+        error.message.includes('NetworkError')
+      )) {
+        console.warn('Backend connection error during token refresh, will retry later');
+        return false;
+      }
       console.error('Token refresh failed:', error);
       logout();
       return false;

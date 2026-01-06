@@ -209,7 +209,11 @@ const initiateCall = async (req, res) => {
     const apiKey = getSettingValue(settings?.api_key, process.env.EXOTEL_API_KEY, process.env.EXOTEL_KEY);
     const apiToken = getSettingValue(settings?.api_token, process.env.EXOTEL_API_TOKEN, process.env.EXOTEL_TOKEN);
     const agentNumber = getSettingValue(settings?.agent_number, process.env.EXOTEL_AGENT_NUMBER, process.env.AGENT_NUMBER);
-    const callerId = getSettingValue(settings?.caller_id, process.env.EXOTEL_CALLER_ID, process.env.CALLER_ID);
+    // Prioritize .env CALLER_ID - use EXOTEL_CALLER_ID first, then CALLER_ID
+    const callerId = getSettingValue(
+      settings?.caller_id, 
+      process.env.EXOTEL_CALLER_ID || process.env.CALLER_ID || ''
+    );
 
     // Log which settings are being used
     console.log('📞 [Call Initiation] User-Specific Settings:', {
@@ -224,7 +228,9 @@ const initiateCall = async (req, res) => {
       exotelSid: exotelSid || '(MISSING!)',
       hasApiKey: !!apiKey,
       hasApiToken: !!apiToken,
-      callerId: callerId || '(MISSING!)',
+      callerIdFromDB: settings?.caller_id || '(empty)',
+      callerIdFromEnv: process.env.EXOTEL_CALLER_ID || process.env.CALLER_ID || '(not set)',
+      finalCallerId: callerId || '(MISSING!)',
       contactPhone: contact.phone,
     });
 
@@ -254,6 +260,11 @@ const initiateCall = async (req, res) => {
       if (!phone) return phone;
       let cleaned = phone.replace(/\s+/g, '');
       if (cleaned.startsWith('+')) return cleaned;
+      // Handle numbers starting with 0 (like 08047362942)
+      if (/^0\d{10}$/.test(cleaned)) {
+        // Remove leading 0 and add +91
+        return `+91${cleaned.substring(1)}`;
+      }
       if (/^\d{10}$/.test(cleaned)) return `+91${cleaned}`;
       if (/^91\d{10}$/.test(cleaned)) return `+${cleaned}`;
       return cleaned;
@@ -262,7 +273,8 @@ const initiateCall = async (req, res) => {
     const formattedAgentNumber = formatPhoneForExotel(cleanAgentNumber);
     const formattedContactPhone = formatPhoneForExotel(cleanContactPhone);
     
-    // CallerId must be a phone number, not a name
+    // CallerId must be a phone number in E.164 format
+    // Format it properly to ensure Exotel accepts it
     let formattedCallerId = cleanCallerId.replace(/\s+/g, '');
     const isPhoneNumber = /^[\d+]+$/.test(formattedCallerId);
     
@@ -270,7 +282,23 @@ const initiateCall = async (req, res) => {
       console.warn('⚠️  [Call Initiation] CallerId is not a phone number, using agent number:', formattedCallerId);
       formattedCallerId = formattedAgentNumber;
     } else {
+      // Format CallerId to E.164 format using the same function
       formattedCallerId = formatPhoneForExotel(formattedCallerId);
+      
+      // Ensure CallerId is in proper E.164 format
+      if (!formattedCallerId.startsWith('+')) {
+        // If it doesn't start with +, try to format it
+        if (formattedCallerId.startsWith('91')) {
+          formattedCallerId = '+' + formattedCallerId;
+        } else if (/^\d{10}$/.test(formattedCallerId)) {
+          // If it's a 10-digit number, add +91
+          formattedCallerId = '+91' + formattedCallerId;
+        } else {
+          // Fallback: use agent number if CallerId format is invalid
+          console.warn('⚠️  [Call Initiation] Invalid CallerId format, using agent number:', formattedCallerId);
+          formattedCallerId = formattedAgentNumber;
+        }
+      }
     }
 
     // Validate formatted phone numbers

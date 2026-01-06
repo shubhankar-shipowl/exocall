@@ -197,6 +197,7 @@ const initiateCall = async (req, res) => {
     });
 
     // Helper function to get setting value with fallback
+    // For CallerId, we want to prioritize .env, so we'll handle it separately
     const getSettingValue = (dbValue, envValue, altEnvValue = null) => {
       if (dbValue && typeof dbValue === 'string' && dbValue.trim().length > 0) {
         return dbValue.trim();
@@ -209,11 +210,50 @@ const initiateCall = async (req, res) => {
     const apiKey = getSettingValue(settings?.api_key, process.env.EXOTEL_API_KEY, process.env.EXOTEL_KEY);
     const apiToken = getSettingValue(settings?.api_token, process.env.EXOTEL_API_TOKEN, process.env.EXOTEL_TOKEN);
     const agentNumber = getSettingValue(settings?.agent_number, process.env.EXOTEL_AGENT_NUMBER, process.env.AGENT_NUMBER);
-    // Prioritize .env CALLER_ID - use EXOTEL_CALLER_ID first, then CALLER_ID
-    const callerId = getSettingValue(
-      settings?.caller_id, 
-      process.env.EXOTEL_CALLER_ID || process.env.CALLER_ID || ''
-    );
+    
+    // For CallerId, ALWAYS prioritize .env over database
+    // Use EXOTEL_CALLER_ID first, then fallback to CALLER_ID
+    const callerIdFromDB = settings?.caller_id;
+    const callerIdFromEnv = process.env.EXOTEL_CALLER_ID || process.env.CALLER_ID;
+    
+    // Force use .env value if it exists, otherwise use DB value
+    // This ensures .env CALLER_ID is always used when available
+    let callerId;
+    if (callerIdFromEnv && typeof callerIdFromEnv === 'string' && callerIdFromEnv.trim().length > 0) {
+      callerId = callerIdFromEnv.trim();
+      console.log('✅ [CallerId] Using .env value (forced):', callerId);
+      console.log('   - Raw .env value:', process.env.CALLER_ID || process.env.EXOTEL_CALLER_ID);
+    } else if (callerIdFromDB && typeof callerIdFromDB === 'string' && callerIdFromDB.trim().length > 0) {
+      callerId = callerIdFromDB.trim();
+      console.log('⚠️  [CallerId] Using DB value (no .env found):', callerId);
+      console.log('   - .env check: EXOTEL_CALLER_ID=', process.env.EXOTEL_CALLER_ID, 'CALLER_ID=', process.env.CALLER_ID);
+    } else {
+      callerId = '';
+      console.log('❌ [CallerId] No value found in DB or .env');
+      console.log('   - .env check: EXOTEL_CALLER_ID=', process.env.EXOTEL_CALLER_ID, 'CALLER_ID=', process.env.CALLER_ID);
+      console.log('   - DB check: caller_id=', callerIdFromDB);
+    }
+    
+    // Comprehensive CallerId logging for debugging
+    console.log('═══════════════════════════════════════════════════════════');
+    console.log('📞 [CALLER ID ANALYSIS]');
+    console.log('═══════════════════════════════════════════════════════════');
+    console.log('🔍 Environment Variables:');
+    console.log('   - process.env.EXOTEL_CALLER_ID:', process.env.EXOTEL_CALLER_ID || '(not set)');
+    console.log('   - process.env.CALLER_ID:', process.env.CALLER_ID || '(not set)');
+    console.log('   - Combined ENV value:', callerIdFromEnv || '(not set)');
+    console.log('');
+    console.log('💾 Database Settings:');
+    console.log('   - settings?.caller_id:', callerIdFromDB || '(empty)');
+    console.log('   - settings exists:', !!settings);
+    console.log('');
+    console.log('✅ Final Selection:');
+    console.log('   - Using DB value:', !!(callerIdFromDB && callerIdFromDB.trim().length > 0));
+    console.log('   - Using ENV value:', !!(callerIdFromEnv && (!callerIdFromDB || callerIdFromDB.trim().length === 0)));
+    console.log('   - Final CallerId value:', callerId || '(MISSING!)');
+    console.log('   - Final CallerId type:', typeof callerId);
+    console.log('   - Final CallerId length:', callerId ? callerId.length : 0);
+    console.log('═══════════════════════════════════════════════════════════');
 
     // Log which settings are being used
     console.log('📞 [Call Initiation] User-Specific Settings:', {
@@ -255,18 +295,47 @@ const initiateCall = async (req, res) => {
     const cleanContactPhone = contact.phone.trim().replace(/\s+/g, '');
     const cleanCallerId = callerId.trim().replace(/\s+/g, '');
 
+    console.log('🔧 [PHONE NUMBER FORMATTING]');
+    console.log('   - Clean Agent Number:', cleanAgentNumber);
+    console.log('   - Clean Contact Phone:', cleanContactPhone);
+    console.log('   - Clean CallerId:', cleanCallerId);
+    console.log('');
+
     // Format phone numbers for Exotel API (E.164 format)
     const formatPhoneForExotel = (phone) => {
-      if (!phone) return phone;
+      if (!phone) {
+        console.log('   ⚠️  formatPhoneForExotel: phone is empty/null');
+        return phone;
+      }
       let cleaned = phone.replace(/\s+/g, '');
-      if (cleaned.startsWith('+')) return cleaned;
+      console.log(`   🔄 Formatting phone: "${cleaned}"`);
+      
+      if (cleaned.startsWith('+')) {
+        console.log(`   ✅ Already has + prefix: "${cleaned}"`);
+        return cleaned;
+      }
+      
       // Handle numbers starting with 0 (like 08047362942)
       if (/^0\d{10}$/.test(cleaned)) {
         // Remove leading 0 and add +91
-        return `+91${cleaned.substring(1)}`;
+        const formatted = `+91${cleaned.substring(1)}`;
+        console.log(`   ✅ Formatted 0-prefixed number: "${cleaned}" -> "${formatted}"`);
+        return formatted;
       }
-      if (/^\d{10}$/.test(cleaned)) return `+91${cleaned}`;
-      if (/^91\d{10}$/.test(cleaned)) return `+${cleaned}`;
+      
+      if (/^\d{10}$/.test(cleaned)) {
+        const formatted = `+91${cleaned}`;
+        console.log(`   ✅ Formatted 10-digit number: "${cleaned}" -> "${formatted}"`);
+        return formatted;
+      }
+      
+      if (/^91\d{10}$/.test(cleaned)) {
+        const formatted = `+${cleaned}`;
+        console.log(`   ✅ Formatted 91-prefixed number: "${cleaned}" -> "${formatted}"`);
+        return formatted;
+      }
+      
+      console.log(`   ⚠️  No format match for: "${cleaned}", returning as-is`);
       return cleaned;
     };
 
@@ -275,31 +344,47 @@ const initiateCall = async (req, res) => {
     
     // CallerId must be a phone number in E.164 format
     // Format it properly to ensure Exotel accepts it
+    console.log('');
+    console.log('📞 [CALLER ID FORMATTING]');
     let formattedCallerId = cleanCallerId.replace(/\s+/g, '');
     const isPhoneNumber = /^[\d+]+$/.test(formattedCallerId);
+    console.log('   - Raw CallerId after cleaning:', formattedCallerId);
+    console.log('   - Is phone number format:', isPhoneNumber);
     
     if (!isPhoneNumber) {
-      console.warn('⚠️  [Call Initiation] CallerId is not a phone number, using agent number:', formattedCallerId);
+      console.warn('   ⚠️  CallerId is not a phone number, using agent number:', formattedCallerId);
       formattedCallerId = formattedAgentNumber;
     } else {
       // Format CallerId to E.164 format using the same function
+      const beforeFormat = formattedCallerId;
       formattedCallerId = formatPhoneForExotel(formattedCallerId);
+      console.log(`   - Before format: "${beforeFormat}"`);
+      console.log(`   - After formatPhoneForExotel: "${formattedCallerId}"`);
       
       // Ensure CallerId is in proper E.164 format
       if (!formattedCallerId.startsWith('+')) {
+        console.log('   ⚠️  CallerId does not start with +, attempting additional formatting...');
         // If it doesn't start with +, try to format it
         if (formattedCallerId.startsWith('91')) {
           formattedCallerId = '+' + formattedCallerId;
+          console.log(`   ✅ Added + prefix: "${formattedCallerId}"`);
         } else if (/^\d{10}$/.test(formattedCallerId)) {
           // If it's a 10-digit number, add +91
           formattedCallerId = '+91' + formattedCallerId;
+          console.log(`   ✅ Added +91 prefix: "${formattedCallerId}"`);
         } else {
           // Fallback: use agent number if CallerId format is invalid
-          console.warn('⚠️  [Call Initiation] Invalid CallerId format, using agent number:', formattedCallerId);
+          console.warn(`   ⚠️  Invalid CallerId format, using agent number: "${formattedCallerId}"`);
           formattedCallerId = formattedAgentNumber;
         }
+      } else {
+        console.log(`   ✅ CallerId already in E.164 format: "${formattedCallerId}"`);
       }
     }
+    
+    console.log('   - Final formatted CallerId:', formattedCallerId);
+    console.log('═══════════════════════════════════════════════════════════');
+    console.log('');
 
     // Validate formatted phone numbers
     if (!formattedAgentNumber || formattedAgentNumber.length < 12 || !formattedAgentNumber.startsWith('+')) {
@@ -315,6 +400,21 @@ const initiateCall = async (req, res) => {
         success: false,
         error: 'Invalid contact phone format',
         message: 'Contact phone number must be in E.164 format with country code.',
+      });
+    }
+
+    // Validate CallerId format
+    if (!formattedCallerId || formattedCallerId.length < 12 || !formattedCallerId.startsWith('+')) {
+      console.error('❌ [Call Initiation] Invalid CallerId format:', {
+        raw: callerId,
+        formatted: formattedCallerId,
+        fromDB: settings?.caller_id || '(empty)',
+        fromEnv: process.env.EXOTEL_CALLER_ID || process.env.CALLER_ID || '(not set)',
+      });
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid Caller ID format',
+        message: `Caller ID must be in E.164 format (e.g., +918047362942). Current value: ${callerId || 'missing'}. Please check your .env file (CALLER_ID) or Settings.`,
       });
     }
 
@@ -347,8 +447,10 @@ const initiateCall = async (req, res) => {
     console.log('   - Agent Number (raw from ENV):', process.env.EXOTEL_AGENT_NUMBER || process.env.AGENT_NUMBER || '(not in ENV)');
     console.log('   - Agent Number (final used):', agentNumber);
     console.log('   - Agent Number (formatted for API):', formattedAgentNumber);
-    console.log('   - Caller ID (raw):', callerId);
-    console.log('   - Caller ID (formatted):', formattedCallerId);
+    console.log('   - Caller ID (raw from DB):', settings?.caller_id || '(not in DB)');
+    console.log('   - Caller ID (raw from ENV):', process.env.EXOTEL_CALLER_ID || process.env.CALLER_ID || '(not in ENV)');
+    console.log('   - Caller ID (final used):', callerId);
+    console.log('   - Caller ID (formatted for API):', formattedCallerId);
     console.log('');
     console.log('📤 API Request Parameters:');
     console.log('   - From:', formattedAgentNumber);
@@ -372,6 +474,22 @@ const initiateCall = async (req, res) => {
       RecordingChannels: 'dual',
       CustomField: `contact_id:${contact.id}`,
     };
+
+    // Final logging before API call
+    console.log('═══════════════════════════════════════════════════════════');
+    console.log('📤 [EXOTEL API REQUEST - FINAL CHECK]');
+    console.log('═══════════════════════════════════════════════════════════');
+    console.log('📋 Request Parameters:');
+    console.log('   - From (Agent):', formattedAgentNumber);
+    console.log('   - To (Customer):', formattedContactPhone);
+    console.log('   - CallerId:', formattedCallerId);
+    console.log('   - CallerId length:', formattedCallerId.length);
+    console.log('   - CallerId starts with +:', formattedCallerId.startsWith('+'));
+    console.log('   - CallerId format valid:', /^\+91\d{10}$/.test(formattedCallerId));
+    console.log('');
+    console.log('🔗 API Endpoint:', exotelUrl.replace(/\/\/[^:]+:[^@]+@/, '//***:***@'));
+    console.log('═══════════════════════════════════════════════════════════');
+    console.log('');
 
     const exotelResponse = await axios.post(exotelUrl, exotelParams, {
       headers: {
@@ -475,15 +593,45 @@ const initiateCall = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error('Error initiating Exotel call:', error);
+    console.error('[Backend Error] Error initiating Exotel call:', error);
 
     // Handle specific Exotel API errors
     if (error.response) {
-      console.error('Exotel API Error:', error.response.data);
+      console.error('Exotel API Error Response:', error.response.data);
 
       const statusCode = error.response.status;
       let errorMessage = 'Failed to initiate call via Exotel';
       let userFriendlyMessage = 'Unable to make the call at this time.';
+
+      // Try to parse XML error response from Exotel
+      let exotelErrorMessage = null;
+      try {
+        const xml2js = require('xml2js');
+        const parser = new xml2js.Parser();
+        const responseData = error.response.data;
+        
+        if (typeof responseData === 'string' && responseData.includes('<TwilioResponse>')) {
+          const parsedResponse = await parser.parseStringPromise(responseData);
+          if (parsedResponse?.TwilioResponse?.RestException?.[0]?.Message?.[0]) {
+            exotelErrorMessage = parsedResponse.TwilioResponse.RestException[0].Message[0];
+            console.error('📋 Parsed Exotel error message:', exotelErrorMessage);
+          } else if (parsedResponse?.TwilioResponse?.RestException?.[0]) {
+            // Try alternative structure
+            const exception = parsedResponse.TwilioResponse.RestException[0];
+            exotelErrorMessage = exception.Message?.[0] || exception.Status?.[0] || 'Unknown Exotel error';
+            console.error('📋 Parsed Exotel error (alternative):', exotelErrorMessage);
+          }
+        } else if (typeof responseData === 'string') {
+          // Try to extract error message from plain text
+          const messageMatch = responseData.match(/<Message>(.*?)<\/Message>/i);
+          if (messageMatch) {
+            exotelErrorMessage = messageMatch[1];
+            console.error('📋 Extracted Exotel error message:', exotelErrorMessage);
+          }
+        }
+      } catch (parseError) {
+        console.error('Error parsing Exotel XML response:', parseError);
+      }
 
       // Handle specific error cases
       if (statusCode === 403) {
@@ -514,7 +662,19 @@ const initiateCall = async (req, res) => {
           'Invalid Exotel credentials. Please contact your administrator.';
       } else if (statusCode === 400) {
         errorMessage = 'Invalid request to Exotel';
-        userFriendlyMessage = 'Invalid call parameters. Please try again.';
+        
+        // Use specific Exotel error message if available
+        if (exotelErrorMessage) {
+          if (exotelErrorMessage.includes('CallerId')) {
+            userFriendlyMessage = `Caller ID error: ${exotelErrorMessage}. Please check your Caller ID configuration in Settings or .env file (CALLER_ID).`;
+          } else if (exotelErrorMessage.includes('phone number') || exotelErrorMessage.includes('number')) {
+            userFriendlyMessage = `Phone number error: ${exotelErrorMessage}. Please check the contact phone number format.`;
+          } else {
+            userFriendlyMessage = `Invalid call parameters: ${exotelErrorMessage}. Please check your Exotel configuration.`;
+          }
+        } else {
+          userFriendlyMessage = 'Invalid call parameters. Please check your Exotel configuration (Caller ID, phone numbers, etc.).';
+        }
       } else if (statusCode >= 500) {
         errorMessage = 'Exotel service unavailable';
         userFriendlyMessage =
